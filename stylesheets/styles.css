@@ -13,7 +13,7 @@ body {
   padding: 50px 0;
   margin: 0;
   font: 14px/1.5 Lato, "Helvetica Neue", Helvetica, Arial, sans-serif;
-  color: #555;
+  color: #000000;
   font-weight: 300;
   background: url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAeCAYAAABNChwpAAAABHNCSVQICAgIfAhkiAAAAAlwSFlzAAALEgAACxIB0t1+/AAAABx0RVh0U29mdHdhcmUAQWRvYmUgRmlyZXdvcmtzIENTNXG14zYAAAAUdEVYdENyZWF0aW9uIFRpbWUAMy82LzEygrTcTAAAAFRJREFUSIljfPDggZRf5RIGGNjUHsNATz6jXmSL1Kb2GLiAX+USBnrymRgGGDCORgFmoNAXjEbBaBSMRsFoFIxGwWgUjEbBaBSMRsFoFIxGwWgUAABYNujumib3wAAAAABJRU5ErkJggg==') fixed;
 }
@@ -65,7 +65,7 @@ header {
   background: -ms-linear-gradient(#ddfbfc, #c6eafa);
   background: linear-gradient(#ddfbfc, #c6eafa);
   position: relative;
-  padding: 15px 20px;
+  padding: 15px 20px 30px;
   border-bottom: 1px solid #B2D2E1;
 }
 header h1 {
@@ -190,6 +190,12 @@ section {
   -o-border-radius: 0 0 8px 8px;
   border-radius: 0 0 8px 8px;
   position: relative;
+}
+
+section ul
+{
+    list-style: none;
+    margin-left: -40px
 }
 
 h1, h2, h3, h4, h5, h6 {
