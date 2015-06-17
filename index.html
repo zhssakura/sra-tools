@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8">
     <meta http-equiv="X-UA-Compatible" content="chrome=1">
-    <title>Sra-tools by ncbi</title>
+    <title>SRA-Tools - NCBI</title>
 
     <link rel="stylesheet" href="stylesheets/styles.css">
     <link rel="stylesheet" href="stylesheets/github-dark.css">
@@ -17,8 +17,7 @@
   <body>
     <div class="wrapper">
       <header>
-        <h1>Sra-tools</h1>
-        <p>SRA Tools</p>
+        <h1>SRA-Tools</h1>
         <p class="view"><a href="https://github.com/ncbi/sra-tools">View the Project on GitHub <small>ncbi/sra-tools</small></a></p>
         <ul>
           <li><a href="https://github.com/ncbi/sra-tools/zipball/master">Download <strong>ZIP File</strong></a></li>
@@ -29,12 +28,51 @@
       <section>
         <p>The SRA Toolkit and SDK from NCBI is a collection of tools and libraries for using data in the INSDC Sequence Read Archives.</p>
 
-<p>Much of the data submitted these days contain alignment information, for example in BAM, Illumina export.txt, and Complete Genomics formats. With aligned data, NCBI uses Compression by Reference, which only stores the differences in base pairs between sequence data and the segment it aligns to. The process to restore original data, for example as FastQ, requires fast access to the reference sequences that the original data was aligned to. NCBI recommends that SRA users dedicate local disk space to store references downloaded from the NCBI SRA site. As of February 2015, the complete collection of these reference sequences is 98 GB. While it isn't usually necessary to download the entirety of the reference sequences, this should give you an idea of the scale of the storage requirement. By default, the Toolkit will download missing reference sequences on demand and cache them in the user's home directory. The location of this cache is configurable, as is whether the download is automatic or manual.</p>
+		<p>
+		  Much of the data submitted these days contain alignment information, for example in BAM, Illumina export.txt, and Complete Genomics formats. 
+		  With aligned data, NCBI uses Compression by Reference, which only stores the differences in base pairs between sequence data and the segment 
+		  it aligns to. The process to restore original data, for example as FastQ, requires fast access to the reference sequences that the original 
+		  data was aligned to. NCBI recommends that SRA users dedicate local disk space to store references downloaded from the NCBI SRA site. As of 
+		  February 2015, the complete collection of these reference sequences is 98 GB. While it isn't usually necessary to download the entirety of 
+		  the reference sequences, this should give you an idea of the scale of the storage requirement. By default, the Toolkit will download missing
+		  reference sequences on demand and cache them in the user's home directory. The location of this cache is configurable, as is whether the 
+		  download is automatic or manual.
+		</p>
 
-<p>For additional information on using, configuring, and building the toolkit, please visit our wiki or our web site at NCBI</p>
+		<p>
+		  For additional information on using, configuring, and building the toolkit, please visit our wiki or our web site at NCBI
+		</p>
 
-<p>SRA Toolkit Development Team</p>
+		<p>
+		  SRA Toolkit Development Team
+		</p>
       </section>
+	  <section>
+		<h2>SRA Toolkit Documentation</h2>
+		<ul>
+		  <li><a href="">SRA Tollkit Installation and Configuration Guide</a></li>
+		  <li><a href="">Protected Data and Usage Guide</a></li>
+		</ul>
+		<h3>Frequently Used Tools</h3>
+		<ul>
+		  <li><a href="">fastq-dump</a></li>
+		  <li><a href="">prefetch</a></li>
+		  <li><a href="">sam-dump</a></li>
+		  <li><a href="">sra-pileup</a></li>
+		  <li><a href="">vdb-config</a></li>
+		  <li><a href="">vdb-decrypt</a></li>
+		</ul>
+		<h3>Additional Tools</h3>
+		<ul>
+		  <li><a href="">abj-dump</a></li>
+		  <li><a href=""></a>illumina-dump</li>
+		  <li><a href=""></a>sff-dump</li>
+		  <li><a href=""></a>sra-stat</li>
+		  <li><a href=""></a>vdb-dump</li>
+		  <li><a href=""></a>vdb-encrypt</li>
+		  <li><a href=""></a>vdb-validate</li>
+		</ul>
+	  </section>
     </div>
     <footer>
       <p>Project maintained by <a href="https://github.com/ncbi">ncbi</a></p>
