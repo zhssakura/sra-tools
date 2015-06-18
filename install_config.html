@@ -37,7 +37,95 @@
 		pre-built executables whenever possible. 
       	</p>
       </section>
+      	<h3>Downloading and installing the SRA Toolkit</h3>
+      	<ul>
+      		<li>
+      			If you are using a web browser, the following page contains download links to the most current version of the toolkit for each of the supported platforms: 
+      			SRA Toolkit download page:
+      			<a href="http://www.ncbi.nlm.nih.gov/Traces/sra/?view=software">Download Page</a>
+      		</li>
+      		<li>
+      			If you are instead working from a command line interface, you may use FTP or wget to obtain the software from the following directory: 
+      			"http://ftp-trace.ncbi.nlm.nih.gov/sra/sdk/current".
+      			Example: wget "http://ftp-trace.ncbi.nlm.nih.gov/sra/sdk/current/sratoolkit.current-centos_linux64.tar.gz"
+      		</li>
+      	</ul>
+      	<h3>Unpacking the Toolkit</h3>
+      	<ul>
+      		<li>Unix: tar -xzf sratoolkit.current-centos_linux64.tar.gz</li>
+      		<li>Mac OSX: Double-click on the .tar.gz file and the Archive Utility will unpack it. Alternatively, command-line tar will also work (see Linux example, above). </li>
+      		<li>Windows: use an archiving and compression utility (e.g., Winzip, 7-Zip, etc.), or simply double-click on the .zip file and drag the 'sratoolkit...' 
+      			folder to the preferred install location. 
+      		</li>
+      	</ul>
+      	<p>
+      		Note: For most users, the Toolkit functions (fastq-dump, sam-dump, etc.) will not be located in their 
+      		<a href="http://en.wikipedia.org/wiki/PATH_(variable)">PATH environmental variable</a>. This may require providing directory 
+      		information about the location of the Toolkit. See the below examples for how 'fastq-dump' would be called in different circumstances: 
+      	</p>
+      	<ul>
+      		<li>~/[user_name]/sra-toolkit/fastq-dump - The Toolkit "bin" directory has been placed in the user-specified directory "sra-toolkit" </li>
+      		<li>./fastq-dump - The Toolkit components are the in the current working directory</li>
+      		<li>fastq-dump - If the toolkit location is not specified in your $PATH variable, then the OS cannot locate the fastq-dump program, even if it is in the current directory. 
+      			NOTE: Windows users should be able to enter only "fastq-dump.exe" if you have navigated to the Toolkit "bin" directory. 
+      		</li>
+      	</ul>
+      	<h3>Testing the Toolkit Configuration</h3>
+      	<p>
+      		The Toolkit comes with a default configuration that will work for most users. You may elect to perform the following tests to confirm that your configuration is working correctly. 
+      		The default location for the "download repository" is:
+      	</p>
+      	<ul>
+      		<li>Linux: /home/[user_name]/ncbi/public</li>
+      		<li>Mac OSX: /Users/[user_name]/ncbi/public</li>
+      		<li>Windows: C:\Users\[user_name]\ncbi\public</li>
+      	</ul>
+      	<p>
+      		Note that if the tests fail, or if you wish to specify the download location for files sourced from NCBI, you should configure your Toolkit installation. During normal operation, 
+      		the Toolkit may be required to download the following types of data to the default location: 
+      	</p>
+      	<ul>
+      		<li>Reference sequences: Small (most less than 70 MB) sequences used to decompress aligned SRA data.</li>
+      		<li>SRA data files: If data are downloaded "on-demand" using the toolkit, then partial and whole SRA datasets (most are several Gb in size) can be located here. 
+      			Note: Manually downloaded SRA data obtained using a web browser, wget, ascp, or FTP may be stored anywhere in the local file system.
+      		</li>
+      	</ul>
+      	<p>
+      		For the test, we are using an arbitrary dataset, <a href="http://www.ncbi.nlm.nih.gov/Traces/sra/sra.cgi?view=run_browser&run=SRR390728">SRR390728</a> 
+      		(RNA-Seq (polyA+) analysis of DLBCL cell line HS0798), from the National Cancer Institute’s Cancer Genome Characterization Initiative (CGCI) Project. 
+      		It is a reasonably small SRA dataset that contains aligned (reference-compressed) data, allowing us to test multiple aspects of the toolkit simultaneously. 
+      	</p>
+      	<ul>
+      		<li>
+      			Open a terminal or command prompt and "cd" into the directory containing the toolkit executables (e.g., [download_location]/sratoolkit[version]/bin/).
+      			<ul>
+      				<li>Linux and OS X users should execute the following command: ./fastq-dump -X 5 -Z SRR390728</li>
+      				<li> Windows users should execute the following command: fastq-dump.exe -X 5 -Z SRR390728</li>
+      			</ul>
+      		</li>
+      		<li>
+      			If successful, the test should connect to NCBI, download a small amount of data from SRR390728 and the reference sequence needed to extract the data, 
+      			and stream the first 5 spots of the file ("-X 5" option) to the screen ("-Z" option).
+      		</li>
+      		<li>
+      			If the configuration is not valid, an error like the following will likely be displayed:
+			fastq-dump.2.x err: item not found while constructing within virtual database module - the path 'SRR390728' cannot be opened as database or table"
+      		</li>
+      		<li>
+      			If you receive an error like the one above, please configure the toolkit (described in the next section). If you have already configured the toolkit 
+      			but are still unable to complete the test successfully, please email <address><a href="mailto:sra-tools@ncbi.nlm.nih.gov">sra-tools@ncbi.nlm.nih.gov</a></address> 
+      			with a full description of steps taken and error messages received. 
+      		</li>
+      	</ul>	
       <section> 
+      	<h3>Configuring the Toolkit</h3>
+      	<p>
+      		If you are using SRA Toolkit version 2.4 or higher, you should run the configuration tool, located within the bin subdirectory of the Toolkit package.
+		Go to the "bin" subdirectory for the Toolkit and run the following command:
+		./vdb-config -i
+		This tool will setup your download/cache area for downloaded files and references.
+		A window will open and present the screen below. 
+      	</p>
       </section>
     </div>
     <footer>
