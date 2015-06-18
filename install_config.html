@@ -42,18 +42,17 @@
       	<ul>
       		<li>
       			If you are using a web browser, the following page contains download links to the most current version of the toolkit for each of the supported platforms: 
-      			SRA Toolkit download page: <br>
-      			<a href="http://www.ncbi.nlm.nih.gov/Traces/sra/?view=software">Download Page</a>
+      			<br>SRA Toolkit download page: <a href="http://www.ncbi.nlm.nih.gov/Traces/sra/?view=software">Download Page</a>
       		</li>
       		<li>
       			If you are instead working from a command line interface, you may use FTP or wget to obtain the software from the following directory: 
       			"http://ftp-trace.ncbi.nlm.nih.gov/sra/sdk/current". <br>
-      			Example: <em>wget "http://ftp-trace.ncbi.nlm.nih.gov/sra/sdk/current/sratoolkit.current-centos_linux64.tar.gz"</em>
+      			Example: <b>wget "http://ftp-trace.ncbi.nlm.nih.gov/sra/sdk/current/sratoolkit.current-centos_linux64.tar.gz"</b>
       		</li>
       	</ul>
       	<h3>Unpacking the Toolkit</h3>
       	<ul>
-      		<li>Unix: <em>tar -xzf sratoolkit.current-centos_linux64.tar.gz</em></li>
+      		<li>Unix: <b>tar -xzf sratoolkit.current-centos_linux64.tar.gz</b></li>
       		<li>Mac OSX: Double-click on the .tar.gz file and the Archive Utility will unpack it. Alternatively, command-line tar will also work (see Linux example, above). </li>
       		<li>Windows: use an archiving and compression utility (e.g., Winzip, 7-Zip, etc.), or simply double-click on the .zip file and drag the 'sratoolkit...' 
       			folder to the preferred install location. 
@@ -65,9 +64,9 @@
       		information about the location of the Toolkit. See the below examples for how 'fastq-dump' would be called in different circumstances: 
       	</p>
       	<ul>
-      		<li>~/[user_name]/sra-toolkit/fastq-dump - The Toolkit "bin" directory has been placed in the user-specified directory "sra-toolkit" </li>
-      		<li>./fastq-dump - The Toolkit components are the in the current working directory</li>
-      		<li>fastq-dump - If the toolkit location is not specified in your $PATH variable, then the OS cannot locate the fastq-dump program, even if it is in the current directory. 
+      		<li><b>~/[user_name]/sra-toolkit/fastq-dump</b> - The Toolkit "bin" directory has been placed in the user-specified directory "sra-toolkit" </li>
+      		<li><b>./fastq-dump</b> - The Toolkit components are the in the current working directory</li>
+      		<li><b></b>fastq-dump</b> - If the toolkit location is not specified in your $PATH variable, then the OS cannot locate the fastq-dump program, even if it is in the current directory.<br>
       			NOTE: Windows users should be able to enter only "fastq-dump.exe" if you have navigated to the Toolkit "bin" directory. 
       		</li>
       	</ul>
@@ -77,9 +76,9 @@
       		The default location for the "download repository" is:
       	</p>
       	<ul>
-      		<li>Linux: /home/[user_name]/ncbi/public</li>
-      		<li>Mac OSX: /Users/[user_name]/ncbi/public</li>
-      		<li>Windows: C:\Users\[user_name]\ncbi\public</li>
+      		<li>Linux: <b>/home/[user_name]/ncbi/public</b></li>
+      		<li>Mac OSX: <b>/Users/[user_name]/ncbi/public</b></li>
+      		<li>Windows: <b>C:\Users\[user_name]\ncbi\public</b></li>
       	</ul>
       	<p>
       		Note that if the tests fail, or if you wish to specify the download location for files sourced from NCBI, you should configure your Toolkit installation. During normal operation, 
@@ -100,8 +99,12 @@
       		<li>
       			Open a terminal or command prompt and "cd" into the directory containing the toolkit executables (e.g., [download_location]/sratoolkit[version]/bin/).
       			<ul>
-      				<li>Linux and OS X users should execute the following command: ./fastq-dump -X 5 -Z SRR390728</li>
-      				<li> Windows users should execute the following command: fastq-dump.exe -X 5 -Z SRR390728</li>
+      				<li>Linux and OS X users should execute the following command:<br>
+      					<b>./fastq-dump -X 5 -Z SRR390728</b>
+      				</li>
+      				<li> Windows users should execute the following command: <br>
+      					<b>fastq-dump.exe -X 5 -Z SRR390728</b>
+      				</li>
       			</ul>
       		</li>
       		<li>
@@ -109,8 +112,8 @@
       			and stream the first 5 spots of the file ("-X 5" option) to the screen ("-Z" option).
       		</li>
       		<li>
-      			If the configuration is not valid, an error like the following will likely be displayed:
-			fastq-dump.2.x err: item not found while constructing within virtual database module - the path 'SRR390728' cannot be opened as database or table"
+      			If the configuration is not valid, an error like the following will likely be displayed:<br>
+			<b>fastq-dump.2.x err: item not found while constructing within virtual database module - the path 'SRR390728' cannot be opened as database or table"</b>
       		</li>
       		<li>
       			If you receive an error like the one above, please configure the toolkit (described in the next section). If you have already configured the toolkit 
@@ -126,7 +129,7 @@
       	</p>
       	<p>
 		Go to the "bin" subdirectory for the Toolkit and run the following command: <br>
-		./vdb-config -i
+		<b>./vdb-config -i</b>
 	</p>
 	<p>
 		This tool will setup your download/cache area for downloaded files and references.
