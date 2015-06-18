@@ -57,6 +57,11 @@ strong .example
   color: #0A0;
 }
 
+strong .OS
+{
+  color: blue;
+}
+
 header {
   -webkit-border-radius: 8px 8px 0 0;
   -moz-border-radius: 8px 8px 0 0;
