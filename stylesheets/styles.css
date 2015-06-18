@@ -51,6 +51,12 @@ strong {
   font-weight: 700;
 }
 
+strong .example
+{
+  font-size: 12px;
+  color: #0A0;
+}
+
 header {
   -webkit-border-radius: 8px 8px 0 0;
   -moz-border-radius: 8px 8px 0 0;
@@ -196,11 +202,6 @@ section ul
 {
     list-style: none;
     margin-left: -40px
-}
-
-section strong
-{
-  color: #0A0;
 }
 
 h1, h2, h3, h4, h5, h6 {
