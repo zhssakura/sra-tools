@@ -47,12 +47,12 @@
       		<li>
       			If you are instead working from a command line interface, you may use FTP or wget to obtain the software from the following directory: 
       			"http://ftp-trace.ncbi.nlm.nih.gov/sra/sdk/current". <br>
-      			Example: <b>wget "http://ftp-trace.ncbi.nlm.nih.gov/sra/sdk/current/sratoolkit.current-centos_linux64.tar.gz"</b>
+      			Example: <strong>wget "http://ftp-trace.ncbi.nlm.nih.gov/sra/sdk/current/sratoolkit.current-centos_linux64.tar.gz"</strong>
       		</li>
       	</ul>
       	<h3>Unpacking the Toolkit</h3>
       	<ul>
-      		<li>Unix: <b>tar -xzf sratoolkit.current-centos_linux64.tar.gz</b></li>
+      		<li>Unix: <strong>tar -xzf sratoolkit.current-centos_linux64.tar.gz</strong></li>
       		<li>Mac OSX: Double-click on the .tar.gz file and the Archive Utility will unpack it. Alternatively, command-line tar will also work (see Linux example, above). </li>
       		<li>Windows: use an archiving and compression utility (e.g., Winzip, 7-Zip, etc.), or simply double-click on the .zip file and drag the 'sratoolkit...' 
       			folder to the preferred install location. 
@@ -64,9 +64,9 @@
       		information about the location of the Toolkit. See the below examples for how 'fastq-dump' would be called in different circumstances: 
       	</p>
       	<ul>
-      		<li><b>~/[user_name]/sra-toolkit/fastq-dump</b> - The Toolkit "bin" directory has been placed in the user-specified directory "sra-toolkit" </li>
-      		<li><b>./fastq-dump</b> - The Toolkit components are the in the current working directory</li>
-      		<li><b></b>fastq-dump</b> - If the toolkit location is not specified in your $PATH variable, then the OS cannot locate the fastq-dump program, even if it is in the current directory.<br>
+      		<li><strong>~/[user_name]/sra-toolkit/fastq-dump</strong> - The Toolkit "bin" directory has been placed in the user-specified directory "sra-toolkit" </li>
+      		<li><strong>./fastq-dump</strong> - The Toolkit components are the in the current working directory</li>
+      		<li><strong>fastq-dump</strong> - If the toolkit location is not specified in your $PATH variable, then the OS cannot locate the fastq-dump program, even if it is in the current directory.<br>
       			NOTE: Windows users should be able to enter only "fastq-dump.exe" if you have navigated to the Toolkit "bin" directory. 
       		</li>
       	</ul>
@@ -76,9 +76,9 @@
       		The default location for the "download repository" is:
       	</p>
       	<ul>
-      		<li>Linux: <b>/home/[user_name]/ncbi/public</b></li>
-      		<li>Mac OSX: <b>/Users/[user_name]/ncbi/public</b></li>
-      		<li>Windows: <b>C:\Users\[user_name]\ncbi\public</b></li>
+      		<li>Linux: <strong>/home/[user_name]/ncbi/public</strong></li>
+      		<li>Mac OSX: <strong>/Users/[user_name]/ncbi/public</strong></li>
+      		<li>Windows: <strong>C:\Users\[user_name]\ncbi\public</strong></li>
       	</ul>
       	<p>
       		Note that if the tests fail, or if you wish to specify the download location for files sourced from NCBI, you should configure your Toolkit installation. During normal operation, 
@@ -100,10 +100,10 @@
       			Open a terminal or command prompt and "cd" into the directory containing the toolkit executables (e.g., [download_location]/sratoolkit[version]/bin/).
       			<ul>
       				<li>Linux and OS X users should execute the following command:<br>
-      					<b>./fastq-dump -X 5 -Z SRR390728</b>
+      					<strong>./fastq-dump -X 5 -Z SRR390728</strong>
       				</li>
       				<li> Windows users should execute the following command: <br>
-      					<b>fastq-dump.exe -X 5 -Z SRR390728</b>
+      					<strong>fastq-dump.exe -X 5 -Z SRR390728</strong>
       				</li>
       			</ul>
       		</li>
@@ -113,7 +113,7 @@
       		</li>
       		<li>
       			If the configuration is not valid, an error like the following will likely be displayed:<br>
-			<b>fastq-dump.2.x err: item not found while constructing within virtual database module - the path 'SRR390728' cannot be opened as database or table"</b>
+			<strong>fastq-dump.2.x err: item not found while constructing within virtual database module - the path 'SRR390728' cannot be opened as database or table"</strong>
       		</li>
       		<li>
       			If you receive an error like the one above, please configure the toolkit (described in the next section). If you have already configured the toolkit 
