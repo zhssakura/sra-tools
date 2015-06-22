@@ -163,9 +163,18 @@
 				Produces two fastq files (--split-files) that contain only aligned reads (--aligned; Note: only for 				files submitted as aligned data), with a quality offset of 64 (-Q 64) Please see the documentation on 				svdb-dump if you wish to produce fasta/qual data.  
 			</li>
 		</ul>
-		<h3>Usage Examples</h3>
-		<ul>
-		</ul>
+		<h3>Possible errors and their solutions</h3>
+			<ul>
+				<li>
+					<strong class="error">fastq-dump.2.x err: item not found while constructing within virtual database 					module - the path '< path/SRR*.sra >' cannot be opened as database or table</strong><br>
+					This error indicates that the .sra file cannot be found. Confirm that the path to the file is 						correct. 
+				</li>
+				<li>
+					<strong class="error">fastq-dump.2.x err: name not found while resolving tree within virtual file 					system module - failed SRR*.sra </strong><br>
+					The data are likely reference compressed and the toolkit is unable to acquire the reference 						sequence(s) needed to extract the .sra file. Please confirm that you have tested and validated the 					configuration of the toolkit. If you have elected to prevent the toolkit from contacting NCBI, you 					will need to 
+					<a href="http://ftp-trace.ncbi.nlm.nih.gov/sra/refseq/">manually acquire the reference(s) here</a>
+				</li>
+			</ul>
 	  </section>
     </div>
     <footer>
