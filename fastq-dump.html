@@ -1,0 +1,178 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="chrome=1">
+    <title>SRA-Tools - NCBI</title>
+
+    <link rel="stylesheet" href="stylesheets/styles.css">
+	<link rel="stylesheet" href="stylesheets/documentation.css">
+    <link rel="stylesheet" href="stylesheets/github-dark.css">
+    <script src="javascripts/scale.fix.js"></script>
+    <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+
+    <!--[if lt IE 9]>
+    <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+  </head>
+  <body>
+    <div class="wrapper">
+      <header>
+        <h1>Tool: fastq-dump</h1>
+        <p class="view"><a href="https://github.com/ncbi/sra-tools">View the Project on GitHub <small>ncbi/sra-tools</small></a></p>
+        <ul>
+          <li><a href="https://github.com/ncbi/sra-tools/zipball/master">Download <strong>ZIP File</strong></a></li>
+          <li><a href="https://github.com/ncbi/sra-tools/tarball/master">Download <strong>TAR Ball</strong></a></li>
+          <li><a href="https://github.com/ncbi/sra-tools">View On <strong>GitHub</strong></a></li>
+        </ul>
+      </header>
+     <section>
+		<h3>Usage</h3>
+			<ul>
+				<li><strong class="example">fastq-dump [options] < path/file > [< path/file > ...]</strong></li>
+				<li><strong class="example">fastq-dump [options] < accession ></strong></li>
+			</ul>
+		<h4>General</h4>
+		<section class="short-options">
+			<ul>
+				<li>-h</em> | </li>
+				<li>-V</em> | </li>
+			</ul>
+		</section>
+		<section class="long-options">
+			<ul>
+				<li>--help</em></li>
+				<li>--version</em></li>
+			</ul>
+		</section>
+		<section class="description">
+			<ul>
+				<li>Displays ALL options, general usage, and version information.</li>
+				<li>Display the version of the program. </li>
+			</ul>
+		</section>
+		<h4>Data Formatting</h4>
+		<section class="short-options">
+			<ul>
+				<li><br></li>
+				<li><br></li>
+				<li><br></em></li>
+				<li>-I</em> |</li>
+				<li>-F</em> |</li>
+				<li>-C</em> |</li>
+				<li>-B</em> |</li>
+				<li>-Q</em> |</em></li>
+			</ul>
+		</section>
+		<section class="long-options">
+			<ul>
+				<li>--split-files</em></li>
+				<li>--split-spot</em></li>
+				<li>--fasta < [line width] ></em></li>
+				<li>--readids</em></li>
+				<li>--origfmt</em></li>
+				<li>--dumpcs < [cskey] ></em></li>
+				<li>--dumpbase</em></li>
+				<li>--offset < integer ></em></li>
+			</ul>
+		</section>
+		<section class="description">
+			<ul>
+				<li>Dump each read into separate file. Files will receive suffix corresponding to read number. </li>
+				<li>Split spots into individual reads.</li>
+				<li>FASTA only, no qualities. Optional line wrap width (set to zero for no wrapping).</li>
+				<li>Append read id after spot id as 'accession.spot.readid' on defline.</li>
+				<li>Defline contains only original sequence name.</li>
+				<li>Formats sequence using color space (default for SOLiD). "cskey" may be specified for translation.</li>
+				<li>Formats sequence using base space (default for other than SOLiD). </li>
+				<li>Offset to use for ASCII quality scores. Default is 33 ("!").</li>
+			</ul>
+		</section>
+		<h4>Filtering</h4>
+		<section class="short-options">
+			<ul>
+				<li>-N |</li>
+				<li>-X |</li>
+				<li>-M |</li>
+				<li><br></li>
+				<li><br></li>
+				<li><br></li>
+			</ul>
+		</section>
+		<section class="long-options">
+			<ul>
+				<li>--minSpotId < rowid ></li>
+				<li>--maxSpotId < rowid ></li>
+				<li>--minReadLen < len ></li>
+				<li>--skip-technical</li>
+				<li>--aligned</li>
+				<li>--unaligned</li>
+			</ul>
+		</section>
+		<section class="description">
+			<ul>
+				<li>Minimum spot id to be dumped. Use with "X" to dump a range.</li>
+				<li>Maximum spot id to be dumped. Use with "N" to dump a range.</li>
+				<li>Filter by sequence length >= < len ></li>
+				<li>Dump only biological reads.</li>
+				<li>Dump only aligned sequences. Aligned datasets only; see sra-stat. </li>
+				<li>Dump only unaligned sequences. Will dump all for unaligned datasets.</li>
+			</ul>
+		</section>
+		<h4>Workflow and piping</h4>
+		<section class="short-options">
+			<ul>
+				<li>-O |</li>
+				<li>-Z |</li>
+				<li><br></li>
+				<li><br></li>
+			</ul>
+		</section>
+		<section class="long-options">
+			<ul>
+				<li>--outdir < path ></li>
+				<li>--stdout</li>
+				<li>--gzip</li>
+				<li>--bzip2</li>
+			</ul>
+		</section>
+		<section class="description">
+			<ul>
+				<li>Output directory, default is current working directory ('.').</li>
+				<li>Output to stdout, all split data become joined into single stream.</li>
+				<li>Compress output using gzip.</li>
+				<li>Compress output using bzip2. </li>
+			</ul>
+		</section>
+		<h3>Frequently Used Options</h3>
+		<ul>
+			<li>
+				<strong class="example">fastq-dump -X 5 -Z SRR390728</strong><br>
+				Prints the first five spots (-X 5) to standard out (-Z). This is a useful starting point for verifying 				other formatting options before dumping a whole file. 
+			</li>
+			<li>
+				<strong class="example">fastq-dump -I --split-files SRR390728</strong><br>
+				Produces two fastq files (--split-files) containing ".1" and ".2" read suffices (-I) for paired-end 				data.  
+			</li>
+			<li>
+				<strong class="example">fastq-dump --split-files --fasta 60 SRR390728</strong><br>
+				Produces two (--split-files) fasta files (--fasta) with 60 bases per line ("60" included after --					fasta).  
+			</li>
+			<li>
+				<strong class="example">fastq-dump --split-files --aligned -Q 64 SRR390728</strong><br>
+				Produces two fastq files (--split-files) that contain only aligned reads (--aligned; Note: only for 				files submitted as aligned data), with a quality offset of 64 (-Q 64) Please see the documentation on 				svdb-dump if you wish to produce fasta/qual data.  
+			</li>
+		</ul>
+		<h3>Usage Examples</h3>
+		<ul>
+		</ul>
+	  </section>
+    </div>
+    <footer>
+      <p>Project maintained by <a href="https://github.com/ncbi">ncbi</a></p>
+      <p>Hosted on GitHub Pages &mdash; Theme by <a href="https://github.com/orderedlist">orderedlist</a></p>
+    </footer>
+    <!--[if !IE]><script>fixScale(document);</script><![endif]-->
+    
+  </body>
+</html>
