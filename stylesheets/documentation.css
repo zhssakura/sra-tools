@@ -1,0 +1,34 @@
+.wrapper
+{
+	width: 1000px;
+}
+
+section .short-options
+{
+	width: 5%;
+	float: left;
+	padding: 0px;
+	font-family: monospace;
+	text-align: left;
+	font-size: 13px;
+}
+
+section .long-options
+{
+	width: 20%;
+	float: left;
+	padding: 0px;
+	font-family: monospace;
+	text-align: left;
+	font-size: 13px;
+
+}
+
+section .description
+{
+	width: 70%;
+	float: left;
+	margin-right: 5%;
+	padding: 0px;
+	font-size: 13px;
+}
