@@ -1,0 +1,189 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="chrome=1">
+    <title>SRA-Tools - NCBI</title>
+
+    <link rel="stylesheet" href="stylesheets/styles.css">
+	<link rel="stylesheet" href="stylesheets/documentation.css">
+    <link rel="stylesheet" href="stylesheets/github-dark.css">
+    <script src="javascripts/scale.fix.js"></script>
+    <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+
+    <!--[if lt IE 9]>
+    <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+  </head>
+  <body>
+    <div class="wrapper">
+      <header>
+        <h1>Tool: sam-dump</h1>
+        <p class="view"><a href="https://github.com/ncbi/sra-tools">View the Project on GitHub <small>ncbi/sra-tools</small></a></p>
+        <ul>
+          <li><a href="https://github.com/ncbi/sra-tools/zipball/master">Download <strong>ZIP File</strong></a></li>
+          <li><a href="https://github.com/ncbi/sra-tools/tarball/master">Download <strong>TAR Ball</strong></a></li>
+          <li><a href="https://github.com/ncbi/sra-tools">View On <strong>GitHub</strong></a></li>
+        </ul>
+      </header>
+     <section>
+		<h3>Usage</h3>
+			<ul>
+				<li><strong class="example">sam-dump [options] < path/file > [< path/file > ...]</strong></li>
+				<li><strong class="example">sam-dump [options] < accession ></strong></li>
+			</ul>
+		<h3>Frequently Used Options</h3>
+		<h4>General</h4>
+		<section class="short-options">
+			<ul>
+				<li>-h</em> | </li>
+				<li>-V</em> | </li>
+			</ul>
+		</section>
+		<section class="long-options">
+			<ul>
+				<li>--help</em></li>
+				<li>--version</em></li>
+			</ul>
+		</section>
+		<section class="description">
+			<ul>
+				<li>Displays ALL options, general usage, and version information.</li>
+				<li>Display the version of the program. </li>
+			</ul>
+		</section>
+		<h4>Data Formatting</h4>
+		<section class="short-options">
+			<ul>
+				<li>-l |</li>
+				<li>-c |</li>
+				<li>-r |</li>
+				<li>-n |</li>
+				<li>-s |</li>
+				<li>-= |</li>
+				<li><br></li>
+				<li><br></li>
+			</ul>
+		</section>
+		<section class="long-options">
+			<ul>
+				<li>--primary</li>
+				<li>--cigar-long</li>
+				<li>--header</li>
+				<li>--no-header</li>
+				<li>--seqid</li>
+				<li>--hide-identical</li>
+				<li>--reverse</li>
+				<li>--rna-splicing</li>
+			</ul>
+		</section>
+		<section class="description">
+			<ul>
+				<li>Output only primary alignments</li>
+				<li>Output long version of CIGAR</li>
+				<li>Always reconstruct header</li>
+				<li>Do not output headers</li>
+				<li>Print reference SEQ_ID in RNAME instead of NAME</li>
+				<li>Output '=' if base is identical to reference</li>
+				<li>Reverse unaligned reads according to read type</li>
+				<li>modify cigar-string and output flags if rna-splicing detected</li>
+			</ul>
+		</section>
+		<h4>Filtering</h4>
+		<section class="short-options">
+			<ul>
+				<li>-U |</li>
+				<li><br></li>
+				<li><br></li>
+				<li><br></li>
+			</ul>
+		</section>
+		<section class="long-options">
+			<ul>
+				<li>--unaligned < rowid ></li>
+				<li>--aligned-region < name[:from-to] ><br><br></li>
+				<li>--matepair-distance < from-to|'unknown' ><br><br></li>
+				<li>--unaligned-spots-only</li>
+				<li>--min-mapq</li>
+			</ul>
+		</section>
+		<section class="description">
+			<ul>
+				<li>Output unaligned reads along with aligned reads</li>
+				<li>
+					Filter by position on genome. Name can either be file
+					specific name (ex: "chr1" or "1"). "from" and "to"
+					(inclusive) are 1-based coordinates
+				</li>
+				<li>
+					Filter by distance between matepairs. Use "unknown" to
+					find matepairs split between the references. Use from-to					
+					(inclusive) to limit matepair distance on the same reference
+				</li>
+				<li>output reads for spots with no aligned reads</li>
+				<li>min. mapq an alignment has to have, to be printed</li>
+			</ul>
+		</section>
+		<h4>Workflow and piping</h4>
+		<section class="short-options">
+			<ul>
+				<li><br></li>
+				<li><br></li>
+				<li><br></li>
+				<li><br></li>
+			</ul>
+		</section>
+		<section class="long-options">
+			<ul>
+				<li>--output-file < path ></li>
+				<li>--gzip</li>
+				<li>--bzip2</li>
+				<li>--option-file < file ></li>
+			</ul>
+		</section>
+		<section class="description">
+			<ul>
+				<li>print output into this file (instead of STDOUT)</li>
+				<li>Compress output using gzip</li>
+				<li>Compress output using bzip2. </li>
+				<li>Read more options and parameters from the file.</li>
+			</ul>
+		</section>
+		<h3>Usage Examples</h3>
+		<ul>
+			<li>
+				<strong class="example">sam-dump SRR390728</strong><br>
+				Output SAM format data to standard out. Alignment information is not required to output in this format. 
+			</li>
+			<li>
+				<strong class="example">sam-dump --aligned-region 1:6484848-6521430 --output-file SRR390728.sam SRR390728</strong><br>
+				Store output in the file SRR390728.sam for only the region 6484848-6521430 on chromosome 1. The sequence name as submitted for the alignment (@SQ SN in SAM/BAM files) or the reference sequence accession must be used.  
+			</li>
+			<li>
+				<strong class="example">sam-dump -r --gzip --output-file SRR390728.sam.gz SRR390728</strong><br>
+				Produces gzip’d (--gzip) output file (--output-file) SRR390728.sam.gz that has a reconstructed header(-r). Will include reference accessions but may not include some header info from the submitted data.  
+			</li>
+		</ul>
+		<h3>Possible errors and their solutions</h3>
+			<ul>
+				<li>
+					<strong class="error">sam-dump.2.x err: item not found while reading file - input object(s) not found
+e</strong><br>
+					This error indicates that the .sra file cannot be found. Confirm that the path to the file is correct.
+				</li>
+				<li>
+					<strong class="error">sam-dump.2.x int: name not found while resolving tree within virtual file system module - VCursorCellDataDirect( row#1 . idx#3 . READ ) char_ptr failed</strong><br>
+					The data are likely reference compressed and the toolkit is unable to acquire the reference sequence(s) needed to extract the .sra file. Please confirm that you have tested and validated the configuration of the toolkit. If you have elected to prevent the toolkit from contacting NCBI,you 					will need to 
+					<a href="http://ftp-trace.ncbi.nlm.nih.gov/sra/refseq/">manually acquire the reference(s) here</a>
+				</li>
+			</ul>
+	  </section>
+    </div>
+    <footer>
+      <p>Project maintained by <a href="https://github.com/ncbi">ncbi</a></p>
+      <p>Hosted on GitHub Pages &mdash; Theme by <a href="https://github.com/orderedlist">orderedlist</a></p>
+    </footer>
+    <!--[if !IE]><script>fixScale(document);</script><![endif]-->
+    
+  </body>
+</html>
