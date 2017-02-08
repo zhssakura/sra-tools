@@ -39,17 +39,18 @@
     #include <ctype.h>
     #include <stdlib.h>
     #include <string.h>
+    #include <sys/stat.h>
     #include <sys/types.h>
     #include <regex.h>
     #include <stdint.h>
+
     #include "sam.tab.h"
 
     #define YYDEBUG 1
 
-/*    int yylex(void); */
-    int SAMlex(void);
-/*    void yyerror(const char * s) { fprintf(stderr,"%s\n", s); } */
-    void SAMerror(const char * s) { fprintf(stderr,"ERR: %s\n", s); }
+    extern int SAMlex(void);
+    extern int SAMerror(const char * s);
+    extern int moredata(char * buf,int * numbytes, int maxbytes);
 
     /* Pair of TAG, regexp: "/..." TODO: or integer range "1-12345" */
     const char * validations[] =
@@ -60,6 +61,7 @@
         "SN", "/[!-)+-<>-~][!-~]*",
         "LN", "/[0]*[1-9][0-9]{0,10}", // TODO: range check 1..2**31-1
         "AS", "/.*",
+        "MD", "/[0-9A-Z\\*]{32}", // bam.c treats same as M5
         "M5", "/[0-9A-Z\\*]{32}",
         "SP", "/.*",
         "UR", "/.*:/.*",
@@ -148,17 +150,42 @@
     }
 
     size_t alignfields=2; // 1 based, QNAME is #1
-    // TODO, make these dynamic
-    char *tags=NULL; // Space delimited tags seen in current line
-    char *seqnames=NULL;
-    char *ids=NULL;
+    extern char *tags;
+    extern char *seqnames;
+    extern char *ids;
 
     void check_required_tag(const char * tag)
     {
         if (!strstr(tags,tag))
         {
-            fprintf(stderr,"%s tag not seen in header\n", tag);
+            fprintf(stderr,"error: %s tag not seen in header\n", tag);
         }
+    }
+
+    // Returns 1 if OK
+    int checkopttagtype(const char * optfield)
+    {
+        const char *opttypes="AMi ASi BCZ BQZ CCZ CMi COZ CPi CQZ CSZ CTZ E2Z FIi FSZ FZZ H0i H1i H2i HIi IHi LBZ MCZ MDZ MQi NHi NMi OCZ OPi OQZ PGZ PQi PTZ PUZ QTZ Q2Z R2Z RGZ RTZ SAZ SMi TCi U2Z UQi";
+        const char type=optfield[3];
+        char tag[3];
+
+        tag[0]=optfield[0];
+        tag[1]=optfield[1];
+        tag[2]='\0';
+
+        if (tag[0]=='X' ||
+            tag[0]=='Y' ||
+            tag[0]=='Z') return 1;
+
+        const char *p=strstr(opttypes,tag);
+        if (p==NULL) return 1;
+
+        if (p[2]!=type)
+        {
+            fprintf(stderr,"error: tag %s should have type %c, not %c\n", tag, p[2], type); return 0;
+        }
+
+        return 1;
     }
 
 %}
@@ -176,18 +203,11 @@
 %token <strval> PROGRAM
 %token <strval> COMMENT
 %token <strval> TAG
+ /* %token <strval> BADTAG */
 %token <strval> VALUE
 %token <strval> ALIGNVALUE
 /* %token DIGITS */
 %token <strval> QNAME
-/*
-%token RNAME
-%token CIGAR
-%token RNEXT
-%token SEQ
-%token QUAL
-%token TTV
-*/
 %token COLON
 %token TAB
 %token CONTROLCHAR
@@ -221,13 +241,16 @@ comment:
 header:
     HEADER tagvaluelist
     {
-        fprintf(stderr,"header tagvaluelist %s\n", SAMlval.strval);
+        fprintf(stderr,"header tagvaluelist\n");
         check_required_tag("VN");
-        if (!strcmp(tags,"SO ") && !strcmp(tags,"GO "))
+        if (!strcmp(tags,"SO ") &&
+            !strcmp(tags,"GO "))
            fprintf(stderr,"warn: Both SO and GO tags present\n");
-        if (!(strcmp(tags,"SO ") || strcmp(tags,"GO ")))
+        if (!(strcmp(tags,"SO ") ||
+              strcmp(tags,"GO ")))
            fprintf(stderr,"warn: neither SO or GO tags present\n");
-        *tags='\0';
+        free(tags);
+        tags=strdup("");
     }
 
 sequence:
@@ -237,7 +260,8 @@ sequence:
         fprintf(stderr," sequences were: %s\n", seqnames);
         check_required_tag("SN");
         check_required_tag("LN");
-        *tags='\0';
+        free(tags);
+        tags=strdup("");
         }
 
 program:
@@ -246,7 +270,8 @@ program:
         fprintf(stderr,"ids were: %s\n", ids);
         fprintf(stderr, "program\n");
         check_required_tag("ID");
-        *tags='\0';
+        free(tags);
+        tags=strdup("");
      }
 
 
@@ -256,11 +281,12 @@ readgroup:
         fprintf(stderr, "readgroup\n");
         fprintf(stderr,"ids were: %s\n", ids);
         check_required_tag("ID");
-        *tags='\0';
+        free(tags);
+        tags=strdup("");
      }
 
-tagvaluelist: tagvalue { fprintf(stderr, " one tagvaluelist:%s\n", SAMlval.strval); }
-  | tagvaluelist tagvalue { fprintf(stderr, " many tagvaluelist:%s\n", SAMlval.strval); }
+tagvaluelist: tagvalue { fprintf(stderr, " one tagvaluelist\n"); }
+  | tagvaluelist tagvalue { fprintf(stderr, " many tagvaluelist\n"); }
   ;
 
 tagvalue: TAB TAG COLON VALUE {
@@ -273,33 +299,52 @@ tagvalue: TAB TAG COLON VALUE {
             fprintf(stderr,"tag '%s' must be 2 characters\n", tag);
         }
 
-        if (islower(tag[0] && islower(tag[1])))
+        if (islower(tag[0] &&
+            islower(tag[1])))
         {
             fprintf(stderr,"optional tag\n");
         } else
         {
             validate(tag, value);
+            tags=realloc(tags, strlen(tags) + strlen(tag) + 1 + 1);
             strcat(tags,tag); strcat(tags," ");
+
             if (!strcmp(tag,"SN"))
             {
-                if (strstr(seqnames,value))
+                char * s=malloc(strlen(value)+2);
+                strcpy(s,value);
+                strcat(s," ");
+                if (strstr(seqnames,s))
                 {
                     fprintf(stderr,"error: duplicate sequence %s\n", value);
                 }
-                strcat(seqnames,value); strcat(seqnames," ");
+                seqnames=realloc(seqnames,strlen(seqnames) + strlen(value) + 1 + 1);
+                strcat(seqnames,s);
+                free(s);
             }
             if (!strcmp(tag,"ID"))
             {
-                if (strstr(ids,value))
+                char * s=malloc(strlen(value)+2);
+                strcpy(s,value);
+                strcat(s," ");
+                if (strstr(ids,s))
                 {
                     fprintf(stderr,"error: duplicate id %s\n", value);
                 }
-                strcat(ids,value); strcat(ids, " ");
+                ids=realloc(ids,strlen(ids) + strlen(value) + 1 + 1);
+                strcat(ids,s);
+                free(s);
             }
         }
+        free($2);
+        free($4);
         };
   | TAB TAB TAG COLON VALUE { fprintf(stderr,"two tabs\n"); }
   | TAB TAB EOL { fprintf(stderr,"empty tags\n"); }
+  | TAB TAG TAG {
+        const char * tag=$2;
+        fprintf(stderr,"error: warning: malformed TAG:VALUE 'TAB %s(NOT COLON)...'\n", tag);
+        }
   | TAB EOL { fprintf(stderr,"empty tags\n"); }
 
   ;
@@ -309,37 +354,54 @@ alignment:
     {
         fprintf(stderr," avlist qname:%s fields=%zu\n", $1, alignfields);
         alignfields=2;
+        free($1);
     }
 
 avlist:
       av { fprintf(stderr," one av\n"); }
- |    avlist av { fprintf(stderr,":bison: many avlist\n"); }
+ |    avlist av {
+           // fprintf(stderr,"bison: many avlist\n");
+            }
 
 av:
     TAB ALIGNVALUE
     {
-        const char * value=$2;
+        const char * field=$2;
         const char * opt="(required)";
         if (alignfields>=12) opt="(optional)";
-        fprintf(stderr,"alignvalue #%zu%s: %s\n", alignfields, opt, value);
+        fprintf(stderr,"alignvalue #%zu%s: %s\n", alignfields, opt, field);
         switch (alignfields)
         {
             case 2: // FLAG
             {
                 int flag;
-                if (sscanf(value, "%d", &flag)!=1 || flag < 0 || flag > UINT16_MAX)
+                if (sscanf(field, "%d", &flag)!=1 ||
+                    flag < 0 ||
+                    flag > 4095)
                 {
-                    fprintf(stderr,"error parsing FLAG: %s\n", value);
+                    fprintf(stderr,"error parsing FLAG: %s\n", field);
                 }
                 fprintf(stderr,"flag is %d\n",flag);
+                break;
+            }
+            case 3: // RNAME
+            {
+                const char * rname=field;
+                if (!regexcheck("\\*|[!-)+-<>-~][!-~]*",rname))
+                {
+                    fprintf(stderr,"error parsing RNAME\n");
+                }
+                fprintf(stderr,"rname is %s\n",rname);
                 break;
             }
             case 4: // POS
             {
                 int pos;
-                if (sscanf(value, "%d", &pos)!=1 || pos <= 0 || pos > INT32_MAX)
+                if (sscanf(field, "%d", &pos)!=1 ||
+                    pos < 0 ||
+                    pos > INT32_MAX)
                 {
-                    fprintf(stderr,"error parsing POS: %s\n", value);
+                    fprintf(stderr,"error parsing POS: %s\n", field);
                 }
                 fprintf(stderr,"pos is %d\n",pos);
                 break;
@@ -347,19 +409,43 @@ av:
             case 5: // MAPQ
             {
                 int mapq;
-                if (sscanf(value, "%d", &mapq)!=1 || mapq < 0 || mapq > UINT8_MAX)
+                if (sscanf(field, "%d", &mapq)!=1 ||
+                    mapq < 0 ||
+                    mapq > UINT8_MAX)
                 {
-                    fprintf(stderr,"error parsing MAPQ: %s\n", value);
+                    fprintf(stderr,"error parsing MAPQ: %s\n", field);
                 }
                 fprintf(stderr,"mapq is %d\n", mapq);
+                break;
+            }
+            case 6: // CIGAR
+            {
+                const char * cigar=field;
+                if (!regexcheck("\\*|([0-9]+[MIDNSHPX=])+",cigar))
+                {
+                    fprintf(stderr,"error parsing cigar\n");
+                }
+                fprintf(stderr,"cigar is %s\n",cigar);
+                break;
+            }
+            case 7: // RNEXT
+            {
+                const char * rnext=field;
+                if (!regexcheck("\\*|=|[!-)+-<>-~][!-~]*",rnext))
+                {
+                    fprintf(stderr,"error parsing rnext\n");
+                }
+                fprintf(stderr,"rnext is %s\n",rnext);
                 break;
             }
             case 8: // PNEXT
             {
                 int pnext;
-                if (sscanf(value, "%d", &pnext)!=1 || pnext < 0 || pnext > INT32_MAX)
+                if (sscanf(field, "%d", &pnext)!=1 ||
+                    pnext < 0 ||
+                    pnext > INT32_MAX)
                 {
-                    fprintf(stderr,"error parsing PNEXT: %s\n", value);
+                    fprintf(stderr,"error parsing PNEXT: %s\n", field);
                 }
                 fprintf(stderr,"pnext is %d\n",pnext);
                 break;
@@ -367,30 +453,91 @@ av:
             case 9: // TLEN
             {
                 int tlen;
-                if (sscanf(value, "%d", &tlen)!=1 || tlen < INT32_MIN || tlen > INT32_MAX)
+                if (sscanf(field, "%d", &tlen)!=1 ||
+                    tlen < INT32_MIN ||
+                    tlen > INT32_MAX)
                 {
-                    fprintf(stderr,"error parsing TLEN: %s\n", value);
+                    fprintf(stderr,"error parsing TLEN: %s\n", field);
                 }
                 fprintf(stderr,"tlen is %d\n", tlen);
                 break;
             }
+            case 10: // SEQ
+            {
+                const char * seq=field;
+                if (!regexcheck("\\*|[A-Za-z=.]+",seq))
+                {
+                    fprintf(stderr,"error parsing seq\n");
+                }
+                fprintf(stderr,"seq is %s\n",seq);
+                break;
+            }
+            case 11: // QUAL
+            {
+                const char * qual=field;
+                if (!regexcheck("[!-~]+",qual))
+                {
+                    fprintf(stderr,"error parsing qual\n");
+                }
+                fprintf(stderr,"qual is %s\n", qual);
+                break;
+            }
+            default: // Optional
+            {
+ //               /TT:t:
+                if ((strlen(field)<5) ||
+                  field[2]!=':' ||
+                  field[4]!=':')
+                  {
+                    fprintf(stderr,"error: invald tagtypevalue:%s\n", field);
+                  }
+                const char type=field[3];
+                if (!checkopttagtype(field))
+                {
+                    fprintf(stderr,"Optional field tag %s doesn't match type\n", field);
 
-
+                }
+                const char * value=&field[5];
+                switch (type)
+                {
+                    case 'A':
+                        if (!regexcheck("[!-~]", value))
+                            fprintf(stderr,"error: value doesn't match A type:%s\n",value);
+                        break;
+                    case 'i':
+                        if (!regexcheck("[-+]?[0-9]+", value))
+                            fprintf(stderr,"error: value doesn't match i type:%s\n",value);
+                        break;
+                    case 'f':
+                        if (!regexcheck("[-+]?[0-9]*\\.?[0-9]+([eE][-+]?[0-9]+)?", value))
+                            fprintf(stderr,"error: value doesn't match f type:%s\n",value);
+                        break;
+                    case 'Z':
+                        if (!regexcheck("[ !-~]*", value))
+                            fprintf(stderr,"error: value doesn't match Z type:%s\n",value);
+                        break;
+                    case 'H':
+                        if (!regexcheck("([0-9A-F][0-9A-F])*", value))
+                            fprintf(stderr,"error: value doesn't match H type:%s\n",value);
+                        break;
+                    case 'B':
+                        if
+                        (!regexcheck("[cCsSiIf](,[-+]?[0-9]*\\.?[0-9]+(eE][-+]?[0-9]+)?)+", value))
+                            fprintf(stderr,"error: value doesn't match B type:%s\n",value);
+                        break;
+                    default:
+                        break;
+                }
+                fprintf(stderr,"optional field:%s\n", field);
+                break;
+            }
         }
         ++alignfields;
+        free($2);
     }
 
 %%
 
 
  /* Epilogue */
-
-int main(int argc, char * argv[])
-{
-    tags=calloc(255,1); // TODO, make dynamic
-    seqnames=calloc(10000,1); // TODO, ""
-    ids=calloc(10000,1); // TODO, ""
-
-    return SAMparse();
-}
 
