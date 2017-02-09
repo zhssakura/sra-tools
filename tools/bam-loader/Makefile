@@ -29,16 +29,22 @@ TOP ?= $(abspath ../..)
 MODULE = tools/bam-loader
 
 INT_TOOLS = \
-	samview
+	samview \
+	samextract
 
 EXT_TOOLS = \
-	bam-load 
+	bam-load
 
 ALL_TOOLS = \
 	$(INT_TOOLS) \
 	$(EXT_TOOLS)
 
 include $(TOP)/build/Makefile.env
+OPT += '-std=c++11'
+
+
+all: $(ALL_TOOLS)
+std: $(ALL_TOOLS)
 
 #-------------------------------------------------------------------------------
 # outer targets
@@ -59,9 +65,15 @@ $(ALL_TOOLS): makedirs
 #-------------------------------------------------------------------------------
 # clean
 #
+INTERM_SRC= \
+	$(SRCDIR)/samextract-lex.c \
+	$(SRCDIR)/samextract-grammer.c \
+	$(SRCDIR)/samextract-parse.tokens.h
 clean: stdclean
 
 .PHONY: clean
+
+.PRECIOUS: $(INTERM_SRC)
 
 #-------------------------------------------------------------------------------
 # bam-load
@@ -108,4 +120,34 @@ SAMVIEW_LIB = \
 
 $(BINDIR)/samview: $(SAMVIEW_OBJ)
 	$(LP) --exe --vers $(SRCDIR)/../../shared/toolkit.vers -o $@ $^ $(SAMVIEW_LIB)
+
+#-------------------------------------------------------------------------------
+# samextract
+#
+SAMEXTRACT_SRC = \
+    samextract \
+    samextract-lex \
+    samextract-grammar
+
+samextract-grammar.c:
+	bison --warnings=error -o $(SRCDIR)/samextract-grammar.c --defines=$(SRCDIR)/samextract-tokens.h -v -Wall $(SRCDIR)/samextract-grammar.y;sleep 1
+
+ifeq (dbg,$(BUILD))
+	FLEX_DEBUG=-d
+endif
+
+samextract-lex.c:
+	flex -f $(FLEX_DEBUG) -t $(SRCDIR)/samextract-lex.l > $(SRCDIR)/samextract-lex.c;sleep 1
+
+SAMEXTRACT_OBJ = \
+	$(addsuffix .$(OBJX),$(SAMEXTRACT_SRC))
+
+SAMEXTRACT_LIB = \
+	-lkapp \
+	-stk-version \
+	-sncbi-vdb \
+	-lm
+
+$(BINDIR)/samextract: $(SAMEXTRACT_OBJ)
+	$(LD) --exe --vers $(SRCDIR)/../../shared/toolkit.vers -o $@ $^ $(SAMEXTRACT_LIB)
 

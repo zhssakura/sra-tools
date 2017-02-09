@@ -44,7 +44,7 @@
     #include <regex.h>
     #include <stdint.h>
 
-    #include "sam.tab.h"
+    #include "samextract-tokens.h"
 
     #define YYDEBUG 1
 

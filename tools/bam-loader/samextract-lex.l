@@ -44,11 +44,12 @@
 %top{
 #include <stdio.h>
 #include <string.h>
-#include "sam.tab.h"
+#include "samextract-tokens.h"
 
 //#define YYSTYPE char
 #define LEXDEBUG 0
 
+#define YY_NO_INPUT
 #undef YY_INPUT
 #define YY_INPUT(buf,numbytes,maxbytes) moredata(buf,&numbytes,maxbytes)
 extern int moredata(char * buf,int * numbytes, int maxbytes);
