@@ -57,55 +57,124 @@ char * mmapbuf=NULL;
 off_t  mmapbuf_sz=0;
 char * mmapbuf_cur=NULL;
 
+typedef struct chunk_s
+{
+    Bytef * in;
+    uInt insize;
+    Bytef * out;
+    uInt outsize;
+    bool complete;
+    chunk_s * next;
+    int workid;
+} chunk;
 
 extern "C" {
-extern int SAMparse();
-int moredata(char * buf,int * numbytes, int maxbytes)
-{
-    fprintf(stderr,"moredata %d %d\n", *numbytes, maxbytes);
-    *numbytes=maxbytes;
-    int bytesremain=mmapbuf_sz-(mmapbuf_cur-mmapbuf);
-    if (maxbytes > bytesremain) *numbytes=bytesremain;
+    extern int SAMparse();
 
-    memmove(buf,mmapbuf_cur,*numbytes);
-    mmapbuf_cur+=*numbytes;
+    int moredata(char * buf,int * numbytes, int maxbytes)
+    {
+        fprintf(stderr,"moredata %d %d\n", *numbytes, maxbytes);
+        *numbytes=maxbytes;
+        int bytesremain=mmapbuf_sz-(mmapbuf_cur-mmapbuf);
+        if (maxbytes > bytesremain) *numbytes=bytesremain;
 
-    return 0;
-}
+        memmove(buf,mmapbuf_cur,*numbytes);
+        mmapbuf_cur+=*numbytes;
 
-void SAMerror(const char * s)
-{
-    fprintf(stderr,"ERR: %s\n", s);
-}
+        return 0;
+    }
+
+    void SAMerror(const char * s)
+    {
+        fprintf(stderr,"ERR: %s\n", s);
+    }
 } // extern C
 
-rc_t inflater(const KThread * self, void * in)
+rc_t inflater(const KThread * kt, void * in)
 {
     fprintf(stderr,"\tThread started.\n");
     KQueue *que=(KQueue *)in;
     struct timeout_t tm;
-    TimeoutInit(&tm, 100000); // 1 second
+    TimeoutInit(&tm, 1000); // 1 second
+
+    z_stream strm;
+    chunk * c=NULL;
+    int workid=-1;
 
     while (1)
     {
-        void * where=0;
-        fprintf(stderr,"\tchecking queue...");
+        void * where=NULL;
         rc_t rc=KQueuePop(que, &where, &tm);
         if (rc==0)
         {
-            fprintf(stderr,"\t\tGot work: %p\n", where);
-            size_t f=(long)where;
-            for (int i=0; i!=10000000; ++i) f*=32131;
-            fprintf(stderr,"result=%lld\n",f);
+//            fprintf(stderr,"\t\tGot work: %p\n", where);
+            c=(chunk *)where;
+            workid=c->workid;
+            fprintf(stderr,"\t\tthread %d chunk %p size %u\n", workid, c->in, c->insize);
+
+            memset(&strm,0,sizeof strm);
+            int zrc=inflateInit2(&strm, MAX_WBITS + 16); // Only gzip format
+            switch (zrc)
+            {
+                case Z_OK:
+                    break;
+                case Z_MEM_ERROR:
+                    fprintf(stderr,"error: Out of memory in zlib\n");
+                    break;
+                case Z_VERSION_ERROR:
+                    fprintf(stderr,"zlib version is not compatible; need version %s but have %s\n", ZLIB_VERSION,zlibVersion());
+                    break;
+                case Z_STREAM_ERROR:
+                    fprintf(stderr,"zlib stream error\n");
+                    break;
+                default:
+                    fprintf(stderr,"zlib error %s\n",strm.msg);
+                    break;
+            }
+            strm.next_in=c->in;
+            strm.avail_in=c->insize;
+            strm.next_out=c->out;
+            strm.avail_out=c->outsize;
+
+            zrc=inflate(&strm,Z_NO_FLUSH);
+            switch (zrc)
+            {
+                case Z_OK:
+                    fprintf(stderr,"\t\tthread %d OK %d %d %lu\n", workid, strm.avail_in, strm.avail_out,strm.total_out);
+                    c->outsize=strm.total_out;
+                    c->complete=true;
+                    break;
+                case Z_MEM_ERROR:
+                    fprintf(stderr,"error: Out of memory in zlib\n");
+                    break;
+                case Z_VERSION_ERROR:
+                    fprintf(stderr,"zlib version is not compatible; need version %s but have %s\n", ZLIB_VERSION,zlibVersion());
+                    break;
+                case Z_STREAM_ERROR:
+                    fprintf(stderr,"zlib stream error %s\n",strm.msg);
+                    break;
+                case Z_STREAM_END:
+                    fprintf(stderr,"zlib stream end%s\n",strm.msg);
+                    break;
+                default:
+                    fprintf(stderr,"inflate error %d %s\n",zrc, strm.msg);
+                    break;
+            }
+            inflateEnd(&strm);
+
+
+
         } else
         if ((int)GetRCObject(rc)== rcTimeout) 
         {
-            fprintf(stderr,"queue empty\n");
-            return 0;
+            fprintf(stderr,"\t\tthread %d queue empty\n",workid);
+            usleep(1);
+        // TODO check if sealed
+    //        return 0;
         } else
         if ((int)GetRCObject(rc)== rcData) 
         {
-            fprintf(stderr,"queue data\n");
+            fprintf(stderr,"\t\tthread %d queue data\n",workid);
             return 0;
         } else
         {
@@ -113,7 +182,19 @@ rc_t inflater(const KThread * self, void * in)
         }
     }
 
+    fprintf(stderr,"\t\tthread %d complete\n",workid);
+
     return 0;
+}
+
+void waitforthreads(KThread ** threads, int numthreads)
+{
+    for (auto i=0; i!=numthreads; ++i)
+    {
+        rc_t rc;
+        fprintf(stderr,"waiting for thread %d to complete\n", i);
+        KThreadWait(threads[i],&rc);
+    }
 }
 
 int threadinflate(void)
@@ -139,9 +220,17 @@ int threadinflate(void)
 
     mmapbuf_cur=mmapbuf;
 
+    chunk * headchunk=NULL;
+    chunk * lastchunk=NULL;
+    int workid=0;
     while(1)
     {
         memset(&strm,0,sizeof strm);
+        if (!memcmp(mmapbuf_cur,"\x1f\x8b\x08\x04\x00\x00\x00\x00\x00\xff\x06\x00\x42\x43\x02\x00\x1b\x00\x03\x00\x00\x00\x00\x00\x00\x00\x00\x00",28))
+        {
+            fprintf(stderr,"EOF marker found\n");
+            break;
+        }
         strm.next_in=(Bytef*)mmapbuf_cur;
         if (mmapbuf_sz > INT32_MAX)
             strm.avail_in=INT32_MAX;
@@ -193,24 +282,65 @@ int threadinflate(void)
             fprintf(stderr,"buf   in:%p\n",mmapbuf_cur);
             fprintf(stderr,"next_in: %p\n",strm.next_in);
             fprintf(stderr,"offset:  %ld\n",mmapbuf_cur-mmapbuf);
+            if (bsize<=28) 
+            {
+                fprintf(stderr,"small block found\n");
+                break;
+            }
+
+            chunk * c=(chunk *)malloc(sizeof(chunk));
+            c->in=(Bytef*)mmapbuf_cur;
+            c->insize=bsize;
+            c->outsize=66536;
+            c->out=(Bytef*)malloc(c->outsize);
+            c->complete=false;
+            c->next=NULL;
+            c->workid=workid;
+            workid=(workid+1) % 15;
+
+            if (headchunk==NULL)
+            {
+                headchunk=c;
+                lastchunk=c;
+            }
+            lastchunk->next=c;
+            lastchunk=c;
+
             while(1)
             {
-                rc=KQueuePush(que, strm.next_in, &tm);
-                fprintf(stderr,"queued:%d %d\n",rc, rcTimeout);
-                if ((int)GetRCObject(rc)== rcTimeout) fprintf(stderr,"queue full\n");
-                if (rc == 0) break;
+                //rc=KQueuePush(que, mmapbuf_cur, &tm);
+                rc=KQueuePush(que, (void *)c, &tm);
+                if ((int)GetRCObject(rc)== rcTimeout) 
+                {
+                    fprintf(stderr,"queue full\n");
+//                    usleep(1);
+                }
+                if (rc == 0)
+                {
+                    fprintf(stderr,"queued: %p %d:%d %d\n", c->in, c->insize, rc, rcTimeout);
+                    break;
+                }
             }
-            if (bsize<=28) return 0;
             mmapbuf_cur=mmapbuf_cur+bsize+1;
         } else
         {
             fprintf(stderr,"error: BAM required extra extension not found\n");
         }
     }
-
     KQueueSeal(que);
-    // TODO: Wait and Release threads
+    waitforthreads(threads,numthreads);
     KQueueRelease(que);
+
+    for (auto i=0; i!=numthreads; ++i)
+        rc=KThreadRelease(threads[i]);
+
+    fprintf(stderr,"Dumping:\n");
+    int i=0;
+    while (headchunk)
+    {
+        fprintf(stderr,"%d %d %d\n", ++i, headchunk->insize, headchunk->outsize);
+        headchunk=headchunk->next;
+    }
 
     return 0;
 }
