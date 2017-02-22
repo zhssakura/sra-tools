@@ -90,7 +90,6 @@
     {
         regex_t preg;
 
-//        fprintf(stderr,"Compiling %s\n", regex);
         int result=regcomp(&preg, regex, REG_EXTENDED);
         if (result)
         {
@@ -110,7 +109,6 @@
             regfree(&preg);
             return 0;
         }
-        //fprintf(stderr,"match\n");
         regfree(&preg);
         return 1;
     }
@@ -132,7 +130,6 @@
             }
             if (!strcmp(tag, valtag))
             {
-//                fprintf(stderr,"Checking %s\n", valtag);
                 if (valval[0]=='/')
                 {
                     ok=regexcheck(valval+1, value);
@@ -215,7 +212,7 @@
 %token END 0 "end of file"
 %error-verbose
 %name-prefix="SAM"
-%require "2.5"
+%require "2.5" //TODO: 3.0.4+
 
 
 %%
@@ -234,9 +231,11 @@ line:
    | program {fprintf(stderr,"program\n\n"); }
    | readgroup {fprintf(stderr,"readgroup\n\n"); }
    | alignment { fprintf(stderr,"alignment\n\n"); }
+   ;
 
 comment:
     COMMENT { }
+    ;
 
 header:
     HEADER tagvaluelist
@@ -252,6 +251,7 @@ header:
         free(tags);
         tags=strdup("");
     }
+    ;
 
 sequence:
     SEQUENCE tagvaluelist
@@ -262,7 +262,8 @@ sequence:
         check_required_tag("LN");
         free(tags);
         tags=strdup("");
-        }
+    }
+    ;
 
 program:
      PROGRAM tagvaluelist
@@ -273,6 +274,7 @@ program:
         free(tags);
         tags=strdup("");
      }
+     ;
 
 
 readgroup:
@@ -284,12 +286,14 @@ readgroup:
         free(tags);
         tags=strdup("");
      }
+     ;
 
 tagvaluelist: tagvalue { fprintf(stderr, " one tagvaluelist\n"); }
   | tagvaluelist tagvalue { fprintf(stderr, " many tagvaluelist\n"); }
   ;
 
 tagvalue: TAB TAG COLON VALUE {
+        // TODO: Move into function
         fprintf(stderr,"tagvalue:%s=%s\n", $2, $4);
         const char * tag=$2;
         const char * value=$4;
@@ -346,7 +350,6 @@ tagvalue: TAB TAG COLON VALUE {
         fprintf(stderr,"error: warning: malformed TAG:VALUE 'TAB %s(NOT COLON)...'\n", tag);
         }
   | TAB EOL { fprintf(stderr,"empty tags\n"); }
-
   ;
 
 alignment:
@@ -356,16 +359,19 @@ alignment:
         alignfields=2;
         free($1);
     }
+    ;
 
 avlist:
       av { fprintf(stderr," one av\n"); }
  |    avlist av {
            // fprintf(stderr,"bison: many avlist\n");
             }
+    ;
 
 av:
     TAB ALIGNVALUE
     {
+    // TODO: Move into function
         const char * field=$2;
         const char * opt="(required)";
         if (alignfields>=12) opt="(optional)";
@@ -535,6 +541,7 @@ av:
         ++alignfields;
         free($2);
     }
+    ;
 
 %%
 

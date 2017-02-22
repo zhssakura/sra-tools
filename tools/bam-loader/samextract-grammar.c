@@ -601,8 +601,8 @@ static const yytype_int8 yyrhs[] =
 static const yytype_uint16 yyrline[] =
 {
        0,   223,   223,   225,   229,   230,   231,   232,   233,   234,
-     235,   236,   239,   242,   257,   268,   279,   288,   289,   292,
-     342,   343,   344,   348,   353,   361,   362,   367
+     235,   236,   240,   244,   260,   272,   284,   294,   295,   298,
+     349,   350,   351,   355,   359,   368,   369,   375
 };
 #endif
 
@@ -1603,14 +1603,14 @@ yyreduce:
   case 12:
 
 /* Line 1806 of yacc.c  */
-#line 239 "/home/vartanianmh/devel/sra-tools/tools/bam-loader/samextract-grammar.y"
+#line 240 "/home/vartanianmh/devel/sra-tools/tools/bam-loader/samextract-grammar.y"
     { }
     break;
 
   case 13:
 
 /* Line 1806 of yacc.c  */
-#line 243 "/home/vartanianmh/devel/sra-tools/tools/bam-loader/samextract-grammar.y"
+#line 245 "/home/vartanianmh/devel/sra-tools/tools/bam-loader/samextract-grammar.y"
     {
         fprintf(stderr,"header tagvaluelist\n");
         check_required_tag("VN");
@@ -1628,7 +1628,7 @@ yyreduce:
   case 14:
 
 /* Line 1806 of yacc.c  */
-#line 258 "/home/vartanianmh/devel/sra-tools/tools/bam-loader/samextract-grammar.y"
+#line 261 "/home/vartanianmh/devel/sra-tools/tools/bam-loader/samextract-grammar.y"
     {
         fprintf(stderr, "sequence\n");
         fprintf(stderr," sequences were: %s\n", seqnames);
@@ -1636,13 +1636,13 @@ yyreduce:
         check_required_tag("LN");
         free(tags);
         tags=strdup("");
-        }
+    }
     break;
 
   case 15:
 
 /* Line 1806 of yacc.c  */
-#line 269 "/home/vartanianmh/devel/sra-tools/tools/bam-loader/samextract-grammar.y"
+#line 273 "/home/vartanianmh/devel/sra-tools/tools/bam-loader/samextract-grammar.y"
     {
         fprintf(stderr,"ids were: %s\n", ids);
         fprintf(stderr, "program\n");
@@ -1655,7 +1655,7 @@ yyreduce:
   case 16:
 
 /* Line 1806 of yacc.c  */
-#line 280 "/home/vartanianmh/devel/sra-tools/tools/bam-loader/samextract-grammar.y"
+#line 285 "/home/vartanianmh/devel/sra-tools/tools/bam-loader/samextract-grammar.y"
     {
         fprintf(stderr, "readgroup\n");
         fprintf(stderr,"ids were: %s\n", ids);
@@ -1668,22 +1668,23 @@ yyreduce:
   case 17:
 
 /* Line 1806 of yacc.c  */
-#line 288 "/home/vartanianmh/devel/sra-tools/tools/bam-loader/samextract-grammar.y"
+#line 294 "/home/vartanianmh/devel/sra-tools/tools/bam-loader/samextract-grammar.y"
     { fprintf(stderr, " one tagvaluelist\n"); }
     break;
 
   case 18:
 
 /* Line 1806 of yacc.c  */
-#line 289 "/home/vartanianmh/devel/sra-tools/tools/bam-loader/samextract-grammar.y"
+#line 295 "/home/vartanianmh/devel/sra-tools/tools/bam-loader/samextract-grammar.y"
     { fprintf(stderr, " many tagvaluelist\n"); }
     break;
 
   case 19:
 
 /* Line 1806 of yacc.c  */
-#line 292 "/home/vartanianmh/devel/sra-tools/tools/bam-loader/samextract-grammar.y"
+#line 298 "/home/vartanianmh/devel/sra-tools/tools/bam-loader/samextract-grammar.y"
     {
+        // TODO: Move into function
         fprintf(stderr,"tagvalue:%s=%s\n", (yyvsp[(2) - (4)].strval), (yyvsp[(4) - (4)].strval));
         const char * tag=(yyvsp[(2) - (4)].strval);
         const char * value=(yyvsp[(4) - (4)].strval);
@@ -1738,21 +1739,21 @@ yyreduce:
   case 20:
 
 /* Line 1806 of yacc.c  */
-#line 342 "/home/vartanianmh/devel/sra-tools/tools/bam-loader/samextract-grammar.y"
+#line 349 "/home/vartanianmh/devel/sra-tools/tools/bam-loader/samextract-grammar.y"
     { fprintf(stderr,"two tabs\n"); }
     break;
 
   case 21:
 
 /* Line 1806 of yacc.c  */
-#line 343 "/home/vartanianmh/devel/sra-tools/tools/bam-loader/samextract-grammar.y"
+#line 350 "/home/vartanianmh/devel/sra-tools/tools/bam-loader/samextract-grammar.y"
     { fprintf(stderr,"empty tags\n"); }
     break;
 
   case 22:
 
 /* Line 1806 of yacc.c  */
-#line 344 "/home/vartanianmh/devel/sra-tools/tools/bam-loader/samextract-grammar.y"
+#line 351 "/home/vartanianmh/devel/sra-tools/tools/bam-loader/samextract-grammar.y"
     {
         const char * tag=(yyvsp[(2) - (3)].strval);
         fprintf(stderr,"error: warning: malformed TAG:VALUE 'TAB %s(NOT COLON)...'\n", tag);
@@ -1762,14 +1763,14 @@ yyreduce:
   case 23:
 
 /* Line 1806 of yacc.c  */
-#line 348 "/home/vartanianmh/devel/sra-tools/tools/bam-loader/samextract-grammar.y"
+#line 355 "/home/vartanianmh/devel/sra-tools/tools/bam-loader/samextract-grammar.y"
     { fprintf(stderr,"empty tags\n"); }
     break;
 
   case 24:
 
 /* Line 1806 of yacc.c  */
-#line 354 "/home/vartanianmh/devel/sra-tools/tools/bam-loader/samextract-grammar.y"
+#line 360 "/home/vartanianmh/devel/sra-tools/tools/bam-loader/samextract-grammar.y"
     {
         fprintf(stderr," avlist qname:%s fields=%zu\n", (yyvsp[(1) - (2)].strval), alignfields);
         alignfields=2;
@@ -1780,14 +1781,14 @@ yyreduce:
   case 25:
 
 /* Line 1806 of yacc.c  */
-#line 361 "/home/vartanianmh/devel/sra-tools/tools/bam-loader/samextract-grammar.y"
+#line 368 "/home/vartanianmh/devel/sra-tools/tools/bam-loader/samextract-grammar.y"
     { fprintf(stderr," one av\n"); }
     break;
 
   case 26:
 
 /* Line 1806 of yacc.c  */
-#line 362 "/home/vartanianmh/devel/sra-tools/tools/bam-loader/samextract-grammar.y"
+#line 369 "/home/vartanianmh/devel/sra-tools/tools/bam-loader/samextract-grammar.y"
     {
            // fprintf(stderr,"bison: many avlist\n");
             }
@@ -1796,8 +1797,9 @@ yyreduce:
   case 27:
 
 /* Line 1806 of yacc.c  */
-#line 368 "/home/vartanianmh/devel/sra-tools/tools/bam-loader/samextract-grammar.y"
+#line 376 "/home/vartanianmh/devel/sra-tools/tools/bam-loader/samextract-grammar.y"
     {
+    // TODO: Move into function
         const char * field=(yyvsp[(2) - (2)].strval);
         const char * opt="(required)";
         if (alignfields>=12) opt="(optional)";
@@ -1972,7 +1974,7 @@ yyreduce:
 
 
 /* Line 1806 of yacc.c  */
-#line 1976 "/home/vartanianmh/devel/sra-tools/tools/bam-loader/samextract-grammar.c"
+#line 1978 "/home/vartanianmh/devel/sra-tools/tools/bam-loader/samextract-grammar.c"
       default: break;
     }
   /* User semantic actions sometimes alter yychar, and that requires
@@ -2203,7 +2205,7 @@ yyreturn:
 
 
 /* Line 2067 of yacc.c  */
-#line 539 "/home/vartanianmh/devel/sra-tools/tools/bam-loader/samextract-grammar.y"
+#line 549 "/home/vartanianmh/devel/sra-tools/tools/bam-loader/samextract-grammar.y"
 
 
 

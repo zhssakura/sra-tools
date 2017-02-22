@@ -49,6 +49,7 @@
 //#define YYSTYPE char
 #define LEXDEBUG 0
 
+// TODO: Flex 2.6.4+
 #define YY_NO_INPUT
 #undef YY_INPUT
 #define YY_INPUT(buf,numbytes,maxbytes) moredata(buf,&numbytes,maxbytes)
