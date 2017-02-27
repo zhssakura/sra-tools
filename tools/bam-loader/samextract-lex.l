@@ -44,25 +44,22 @@
 %top{
 #include <stdio.h>
 #include <string.h>
+#include "samextract.h"
 #include "samextract-tokens.h"
 
-//#define YYSTYPE char
+/* #define YYSTYPE char data type for llval */
 #define LEXDEBUG 0
 
-// TODO: Flex 2.6.4+
-#define YY_NO_INPUT
-#undef YY_INPUT
+/* #define YY_NO_INPUT */
+char * lexbuf=NULL;
+Extractor * globstate=NULL;
+int moredata(char * buf, int * numbytes, size_t maxbytes);
 #define YY_INPUT(buf,numbytes,maxbytes) moredata(buf,&numbytes,maxbytes)
-extern int moredata(char * buf,int * numbytes, int maxbytes);
 
-
-    // do { if (LEXDEBUG) fprintf(stderr, "%s:%d:%s(): " fmt, __FILE__, __LINE__, __func__, __VA_ARGS__); } while (0)
-#define lex_print(fmt, ...) \
-    do { if (LEXDEBUG) fprintf(stderr, fmt, ##__VA_ARGS__); } while (0)
 
   }
 
-/* definitions */
+ /* definitions */
 digits [[:digit:]]+
 integer [-+]?[0-9]+
 float  [-+]?[0-9]*\.?[0-9]+([eE][-+]?[0-9]+)?
@@ -71,48 +68,84 @@ controlchar [\x00-\x08\x0b-\x0c\x0e-\x1f]
 
 tag [A-Za-z][A-Za-z0-9]
 
-/* No @ in first, to distinguish from headers */
+ /* No @ in first, to distinguish from headers */
 qname [!-?A-~][!-~]{0,253}
 
-/* stop after first EOF */
 %option prefix="SAM"
-%option warn
+ /* See also bison's lex-param/parse-param */
+/*%option extra-type="Extractor *" */
+ /* stop after first EOF */
 %option noyywrap
 %option nodefault
-%option nounput
+%option warn
 %option nodebug
-/* Not a TTY */
+ /* Don't use these functions */
+%option nounput
+%option noinput
+ /* Not a TTY */
 %option never-interactive
 %option yylineno
 %option nounistd
-/* Allow multitheading */
 /* %option reentrant */
-/* yylex takes yylval */
 /* %option bison-bridge */
+
+ /* Start states */
 %x INALIGNMENT
 %x AFTERCOLON
 
 %%
  /* rules */
-^@HD   { lex_print( "lex: Header\n"); return HEADER; }
-^@SQ   { lex_print( "lex: SQ\n"); return SEQUENCE; }
-^@RG   { lex_print( "lex: RG\n"); return READGROUP; }
-^@PG   { lex_print( "lex: PG\n"); return PROGRAM; }
-^@CO\t.*{eol} { lex_print( "lex: Comment\n"); return COMMENT; }
+^@HD   { DBG( " Header"); return HEADER; }
+^@SQ   { DBG( " SQ"); return SEQUENCE; }
+^@RG   { DBG( " RG"); return READGROUP; }
+^@PG   { DBG( " PG"); return PROGRAM; }
+^@CO\t.*{eol} { DBG( " Comment"); return COMMENT; }
 
- /* TODO: replace strdups with pool/chunk allocator */
-<INITIAL,INALIGNMENT>^{qname} { BEGIN INALIGNMENT; SAMlval.strval=strdup(yytext); lex_print("\nlex: alignment qname, INALIGNMENT\n"); return QNAME; }
-<INITIAL,INALIGNMENT,AFTERCOLON>{controlchar} { lex_print("lex:CONTROLCHAR1\n"); return CONTROLCHAR; }
-<INITIAL,INALIGNMENT>\t { lex_print("lex: tab\n"); return TAB;}
-<AFTERCOLON>\t { BEGIN INITIAL; lex_print("lex: tab INITIAL\n"); return TAB;}
 
-<INITIAL,INALIGNMENT,AFTERCOLON>{eol} { BEGIN INITIAL; lex_print("lex: eol INITIAL\n"); return EOL;}
-<INALIGNMENT>[ -~]+ { SAMlval.strval=strdup(yytext); lex_print("lex: alignvalue\n"); return ALIGNVALUE; }
-{tag}  { SAMlval.strval=strdup(yytext); lex_print("lex: Valid Tag:%s\n", yytext); return TAG; }
-<INITIAL,INALIGNMENT>: { BEGIN AFTERCOLON; lex_print("lex: colon AFTERCOLON\n"); return COLON;}
-<AFTERCOLON>[ -~]+ { SAMlval.strval=strdup(yytext); lex_print("lex: Value:%s\n", yytext); return VALUE; }
+<INITIAL,INALIGNMENT>^{qname} { BEGIN INALIGNMENT; SAMlval.strval=strdup(yytext); DBG(" alignment qname, INALIGNMENT"); return QNAME; }
+<INITIAL,INALIGNMENT,AFTERCOLON>{controlchar} { DBG("CONTROLCHAR1"); return CONTROLCHAR; }
+<INITIAL,INALIGNMENT>\t { DBG(" tab"); return TAB;}
+<AFTERCOLON>\t { BEGIN INITIAL; DBG(" tab INITIAL"); return TAB;}
 
-.|\n       lex_print("DEFAULT '%c' ", *yytext);
+<INITIAL,INALIGNMENT,AFTERCOLON>{eol} { BEGIN INITIAL; DBG(" eol INITIAL"); return EOL;}
+<INALIGNMENT>[ -~]+ { SAMlval.strval=strdup(yytext); DBG(" alignvalue"); return ALIGNVALUE; }
+{tag}  { SAMlval.strval=strdup(yytext); DBG(" Valid Tag:%s", yytext); return TAG; }
+<INITIAL,INALIGNMENT>: { BEGIN AFTERCOLON; DBG(" colon AFTERCOLON"); return COLON;}
+<AFTERCOLON>[ -~]+ { SAMlval.strval=strdup(yytext); DBG(" Value:%s", yytext); return VALUE; }
+
+.|\n       DBG("DEFAULT '%c' ", *yytext);
 
 %%
- /* user code */
+
+bool SAM_parsebegin(Extractor * state)
+{
+    globstate=state;
+    return true;
+}
+
+void SAM_parseend(Extractor * state)
+{
+    free(lexbuf);
+    lexbuf=NULL;
+}
+
+int SAM_parsebuffer(Extractor * state, char * str, size_t size)
+{
+    DBG("Parsing");
+    lexbuf=realloc(lexbuf,size+2);
+    memmove(lexbuf,str,size);
+    lexbuf[size]='\0';
+    SAMparse(&state);
+    return 0;
+}
+
+int moredata(char * buf, int * numbytes, size_t maxbytes)
+{
+    DBG("moredata %p %d", buf, maxbytes);
+    strcpy(buf,lexbuf);
+    *numbytes=strlen(buf);
+    lexbuf[0]='\0';
+    return 0;
+}
+
+

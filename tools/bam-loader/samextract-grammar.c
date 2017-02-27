@@ -85,60 +85,33 @@
     #include <regex.h>
     #include <stdint.h>
 
+    #include "samextract.h"
+    #include "samextract-lib.h"
     #include "samextract-tokens.h"
 
     #define YYDEBUG 1
+/*    #define SAMdebug 1 */
 
-    extern int SAMlex(void);
-    extern int SAMerror(const char * s);
-    extern int moredata(char * buf,int * numbytes, int maxbytes);
+    size_t alignfields=2; // 1 based, QNAME is #1
 
-    /* Pair of TAG, regexp: "/..." TODO: or integer range "1-12345" */
-    const char * validations[] =
+    int SAMerror(const char * s)
     {
-        "VN", "/.*", // @PG also has "/[0-9]+\\.[0-9]+",
-        "SO", "/unknown|unsorted|queryname|coordinate",
-        "GO", "/none|query|reference",
-        "SN", "/[!-)+-<>-~][!-~]*",
-        "LN", "/[0]*[1-9][0-9]{0,10}", // TODO: range check 1..2**31-1
-        "AS", "/.*",
-        "MD", "/[0-9A-Z\\*]{32}", // bam.c treats same as M5
-        "M5", "/[0-9A-Z\\*]{32}",
-        "SP", "/.*",
-        "UR", "/.*:/.*",
-        "ID", "/.*",
-        "CN", "/.*",
-        "DS", "/.*",
-        "DT", "/.*",
-        "FO", "/\\*|[ACMGRSVTWYHKDBN]+",
-        "KS", "/.*",
-        "LB", "/.*",
-        "PG", "/.*",
-        "PI", "/.*",
-        "PL", "/.*",
-        "PM", "/.*",
-        "PU", "/.*",
-        "SM", "/.*",
-        "PN", "/.*",
-        "CL", "/.*",
-        "PP", "/.*",
-        "DS", "/.*",
-        "\0", "\0"
-    };
+        ERR("%s",s);
+        return 0;
+    }
 
     // Returns 1 if match found
     int regexcheck(const char *regex, const char * value)
     {
         regex_t preg;
 
-//        fprintf(stderr,"Compiling %s\n", regex);
         int result=regcomp(&preg, regex, REG_EXTENDED);
         if (result)
         {
             size_t s=regerror(result, &preg, NULL, 0);
             char *errmsg=malloc(s);
             regerror(result, &preg, errmsg, s);
-            fprintf(stderr,"regcomp error on '%s': %s\n", regex, errmsg);
+            ERR("regcomp error on '%s': %s", regex, errmsg);
             free(errmsg);
             regfree(&preg);
             return 0;
@@ -147,11 +120,10 @@
         regmatch_t matches[1];
         if (regexec(&preg, value, 1, matches, 0))
         {
-            fprintf(stderr,"Value: '%s' doesn't match regex '%s'\n", value, regex);
+            ERR("Value: '%s' doesn't match regex '%s'", value, regex);
             regfree(&preg);
             return 0;
         }
-        //fprintf(stderr,"match\n");
         regfree(&preg);
         return 1;
     }
@@ -159,6 +131,39 @@
     // Returns 1 if OK
     int validate(const char * tag, const char * value)
     {
+        /* Pair of TAG, regexp: "/..." TODO: or integer range "1-12345" */
+        const char * validations[] =
+        {
+            "VN", "/.*", // @PG also has "/[0-9]+\\.[0-9]+",
+            "SO", "/unknown|unsorted|queryname|coordinate",
+            "GO", "/none|query|reference",
+            "SN", "/[!-)+-<>-~][!-~]*",
+            "LN", "/[0]*[1-9][0-9]{0,10}", // TODO: range check 1..2**31-1
+            "AS", "/.*",
+            "MD", "/[0-9A-Z\\*]{32}", // bam.c treats same as M5
+            "M5", "/[0-9A-Za-z\\*]{32}", // TODO: lowercase acceptable?
+            "SP", "/.*",
+            "UR", "/.*",
+            "ID", "/.*",
+            "CN", "/.*",
+            "DS", "/.*",
+            "DT", "/.*",
+            "FO", "/\\*|[ACMGRSVTWYHKDBN]+",
+            "KS", "/.*",
+            "LB", "/.*",
+            "PG", "/.*",
+            "PI", "/.*",
+            "PL", "/.*",
+            "PM", "/.*",
+            "PU", "/.*",
+            "SM", "/.*",
+            "PN", "/.*",
+            "CL", "/.*",
+            "PP", "/.*",
+            "DS", "/.*",
+            "\0", "\0"
+        };
+
         int ok=0;
 
         for (size_t i=0;;++i)
@@ -167,13 +172,12 @@
             const char *valval=validations[i*2+1];
             if (*valtag=='\0')
             {
-                fprintf(stderr,"No validation for tag %s\n", tag);
+                WARN("No validation for tag %s", tag);
                 ok=1;
                 break;
             }
             if (!strcmp(tag, valtag))
             {
-//                fprintf(stderr,"Checking %s\n", valtag);
                 if (valval[0]=='/')
                 {
                     ok=regexcheck(valval+1, value);
@@ -181,7 +185,7 @@
                 } else
                 {
                 // Parse integer range
-                    fprintf(stderr,"range not implemented\n");
+                    WARN("range not implemented");
                     ok=1;
                 }
             }
@@ -190,16 +194,11 @@
         return ok;
     }
 
-    size_t alignfields=2; // 1 based, QNAME is #1
-    extern char *tags;
-    extern char *seqnames;
-    extern char *ids;
-
-    void check_required_tag(const char * tag)
+    void check_required_tag(const char * tags, const char * tag)
     {
         if (!strstr(tags,tag))
         {
-            fprintf(stderr,"error: %s tag not seen in header\n", tag);
+            ERR("%s tag not seen in header", tag);
         }
     }
 
@@ -223,16 +222,257 @@
 
         if (p[2]!=type)
         {
-            fprintf(stderr,"error: tag %s should have type %c, not %c\n", tag, p[2], type); return 0;
+            ERR("tag %s should have type %c, not %c", tag, p[2], type); return 0;
         }
 
         return 1;
     }
 
+    void mark_headers(const char * type)
+    {
+        for (u32 i=0; i!=VectorLength(&globstate->headers); ++i)
+        {
+            Header * hdr;
+            hdr=VectorGet(&globstate->headers,i);
+            if (!strcmp(hdr->headercode,"TBD"))
+                hdr->headercode=strdup(type);
+//            DBG("Vector header[%d]: %s %s %s", i, hdr->headercode,hdr->tag,hdr->value);
+        }
+    }
+
+    void process_tagvalue(const char * tag, const char * value)
+    {
+        if (strlen(tag)!=2)
+        {
+            ERR("tag '%s' must be 2 characters", tag);
+        }
+
+        if (islower(tag[0] &&
+            islower(tag[1])))
+        {
+            DBG("optional tag");
+        } else
+        {
+            if (!validate(tag, value))
+            {
+                ERR("Tag validataion %s failed",tag);
+            }
+            globstate->tags=realloc(globstate->tags, strlen(globstate->tags) + strlen(tag) + 1 + 1);
+            strcat(globstate->tags,tag); strcat(globstate->tags," ");
+
+            if (!strcmp(tag,"SN"))
+            {
+                char * s=malloc(strlen(value)+2);
+                strcpy(s,value);
+                strcat(s," ");
+                if (strstr(globstate->seqnames,s))
+                {
+                    ERR("duplicate sequence %s", value);
+                }
+                globstate->seqnames=realloc(globstate->seqnames,strlen(globstate->seqnames) + strlen(value) + 1 + 1);
+                strcat(globstate->seqnames,s);
+                free(s);
+            }
+            if (!strcmp(tag,"ID"))
+            {
+                char * s=malloc(strlen(value)+2);
+                strcpy(s,value);
+                strcat(s," ");
+                if (strstr(globstate->ids,s))
+                {
+                    ERR("duplicate id %s", value);
+                }
+                globstate->ids=realloc(globstate->ids,strlen(globstate->ids) + strlen(value) + 1 + 1);
+                strcat(globstate->ids,s);
+                free(s);
+            }
+        }
+        Header * hdr=calloc(1,sizeof(Header));
+        hdr->headercode="TBD";
+        hdr->tag=strdup(tag);
+        hdr->value=strdup(value);
+        VectorAppend(&globstate->headers,NULL,hdr);
+    }
+
+    void process_align(const char *field)
+    {
+        const char * opt="(required)";
+        if (alignfields>=12) opt="(optional)";
+        DBG("alignvalue #%zu%s: %s", alignfields, opt, field);
+        switch (alignfields)
+        {
+            case 2: // FLAG
+            {
+                int flag;
+                if (sscanf(field, "%d", &flag)!=1 ||
+                    flag < 0 ||
+                    flag > 4095)
+                {
+                    ERR("error parsing FLAG: %s", field);
+                }
+                DBG("flag is %d",flag);
+                break;
+            }
+            case 3: // RNAME
+            {
+                const char * rname=field;
+                if (!regexcheck("\\*|[!-)+-<>-~][!-~]*",rname))
+                {
+                    ERR("error parsing RNAME");
+                }
+                DBG("rname is %s",rname);
+                globstate->rname=strdup(rname);
+                break;
+            }
+            case 4: // POS
+            {
+                int pos;
+                if (sscanf(field, "%d", &pos)!=1 ||
+                    pos < 0 ||
+                    pos > INT32_MAX)
+                {
+                    ERR("error parsing POS: %s", field);
+                }
+                DBG("pos is %d",pos);
+                globstate->pos=pos;
+                break;
+            }
+            case 5: // MAPQ
+            {
+                int mapq;
+                if (sscanf(field, "%d", &mapq)!=1 ||
+                    mapq < 0 ||
+                    mapq > UINT8_MAX)
+                {
+                    ERR("error parsing MAPQ: %s", field);
+                }
+                DBG("mapq is %d", mapq);
+                break;
+            }
+            case 6: // CIGAR
+            {
+                const char * cigar=field;
+                if (!regexcheck("\\*|([0-9]+[MIDNSHPX=])+",cigar))
+                {
+                    ERR("error parsing cigar");
+                }
+                DBG("cigar is %s",cigar);
+                globstate->cigar=strdup(cigar);
+                break;
+            }
+            case 7: // RNEXT
+            {
+                const char * rnext=field;
+                if (!regexcheck("\\*|=|[!-)+-<>-~][!-~]*",rnext))
+                {
+                    ERR("error parsing rnext");
+                }
+                DBG("rnext is %s",rnext);
+                break;
+            }
+            case 8: // PNEXT
+            {
+                int pnext;
+                if (sscanf(field, "%d", &pnext)!=1 ||
+                    pnext < 0 ||
+                    pnext > INT32_MAX)
+                {
+                    ERR("error parsing PNEXT: %s", field);
+                }
+                DBG("pnext is %d",pnext);
+                break;
+            }
+            case 9: // TLEN
+            {
+                int tlen;
+                if (sscanf(field, "%d", &tlen)!=1 ||
+                    tlen < INT32_MIN ||
+                    tlen > INT32_MAX)
+                {
+                    ERR("error parsing TLEN: %s", field);
+                }
+                DBG("tlen is %d", tlen);
+                break;
+            }
+            case 10: // SEQ
+            {
+                const char * seq=field;
+                if (!regexcheck("\\*|[A-Za-z=.]+",seq))
+                {
+                    ERR("error parsing seq");
+                }
+                DBG("seq is %s",seq);
+                globstate->read=strdup(seq);
+                break;
+            }
+            case 11: // QUAL
+            {
+                const char * qual=field;
+                if (!regexcheck("[!-~]+",qual))
+                {
+                    ERR("error parsing qual");
+                }
+                DBG("qual is %s", qual);
+                break;
+            }
+            default: // Optional
+            {
+ //               /TT:t:
+                if ((strlen(field)<5) ||
+                  field[2]!=':' ||
+                  field[4]!=':')
+                  {
+                    ERR("invald tagtypevalue:%s", field);
+                  }
+                const char type=field[3];
+                if (!checkopttagtype(field))
+                {
+                    WARN("Optional field tag %s doesn't match type", field);
+
+                }
+                const char * value=&field[5];
+                switch (type)
+                {
+                    case 'A':
+                        if (!regexcheck("[!-~]", value))
+                            ERR("value doesn't match A type:%s",value);
+                        break;
+                    case 'i':
+                        if (!regexcheck("[-+]?[0-9]+", value))
+                            ERR("value doesn't match i type:%s",value);
+                        break;
+                    case 'f':
+                        if (!regexcheck("[-+]?[0-9]*\\.?[0-9]+([eE][-+]?[0-9]+)?", value))
+                            ERR("value doesn't match f type:%s",value);
+                        break;
+                    case 'Z':
+                        if (!regexcheck("[ !-~]*", value))
+                            ERR("value doesn't match Z type:%s",value);
+                        break;
+                    case 'H':
+                        if (!regexcheck("([0-9A-F][0-9A-F])*", value))
+                            ERR("value doesn't match H type:%s",value);
+                        break;
+                    case 'B':
+                        if
+                        (!regexcheck("[cCsSiIf](,[-+]?[0-9]*\\.?[0-9]+(eE][-+]?[0-9]+)?)+", value))
+                            ERR("value doesn't match B type:%s",value);
+                        break;
+                    default:
+                        break;
+                }
+                DBG("optional field:%s", field);
+                break;
+            }
+        }
+        ++alignfields;
+
+    }
+
 
 
 /* Line 268 of yacc.c  */
-#line 236 "/home/vartanianmh/devel/sra-tools/tools/bam-loader/samextract-grammar.c"
+#line 476 "/home/vartanianmh/devel/sra-tools/tools/bam-loader/samextract-grammar.c"
 
 /* Enabling traces.  */
 #ifndef YYDEBUG
@@ -283,7 +523,7 @@ typedef union YYSTYPE
 {
 
 /* Line 293 of yacc.c  */
-#line 194 "/home/vartanianmh/devel/sra-tools/tools/bam-loader/samextract-grammar.y"
+#line 434 "/home/vartanianmh/devel/sra-tools/tools/bam-loader/samextract-grammar.y"
 
  int intval;
  char * strval;
@@ -292,7 +532,7 @@ typedef union YYSTYPE
 
 
 /* Line 293 of yacc.c  */
-#line 296 "/home/vartanianmh/devel/sra-tools/tools/bam-loader/samextract-grammar.c"
+#line 536 "/home/vartanianmh/devel/sra-tools/tools/bam-loader/samextract-grammar.c"
 } YYSTYPE;
 # define YYSTYPE_IS_TRIVIAL 1
 # define yystype YYSTYPE /* obsolescent; will be withdrawn */
@@ -304,7 +544,7 @@ typedef union YYSTYPE
 
 
 /* Line 343 of yacc.c  */
-#line 308 "/home/vartanianmh/devel/sra-tools/tools/bam-loader/samextract-grammar.c"
+#line 548 "/home/vartanianmh/devel/sra-tools/tools/bam-loader/samextract-grammar.c"
 
 #ifdef short
 # undef short
@@ -600,9 +840,9 @@ static const yytype_int8 yyrhs[] =
 /* YYRLINE[YYN] -- source line where rule number YYN was defined.  */
 static const yytype_uint16 yyrline[] =
 {
-       0,   223,   223,   225,   229,   230,   231,   232,   233,   234,
-     235,   236,   240,   244,   260,   272,   284,   294,   295,   298,
-     349,   350,   351,   355,   359,   368,   369,   375
+       0,   467,   467,   469,   473,   474,   475,   476,   477,   478,
+     479,   480,   484,   490,   508,   521,   534,   545,   546,   549,
+     557,   558,   559,   563,   567,   582,   583,   589
 };
 #endif
 
@@ -1554,183 +1794,147 @@ yyreduce:
         case 5:
 
 /* Line 1806 of yacc.c  */
-#line 230 "/home/vartanianmh/devel/sra-tools/tools/bam-loader/samextract-grammar.y"
-    { fprintf(stderr,"error: CONTROLCHAR\n"); }
+#line 474 "/home/vartanianmh/devel/sra-tools/tools/bam-loader/samextract-grammar.y"
+    { ERR("CONTROLCHAR"); }
     break;
 
   case 6:
 
 /* Line 1806 of yacc.c  */
-#line 231 "/home/vartanianmh/devel/sra-tools/tools/bam-loader/samextract-grammar.y"
-    { fprintf(stderr,"comment\n"); }
+#line 475 "/home/vartanianmh/devel/sra-tools/tools/bam-loader/samextract-grammar.y"
+    { DBG("comment"); }
     break;
 
   case 7:
 
 /* Line 1806 of yacc.c  */
-#line 232 "/home/vartanianmh/devel/sra-tools/tools/bam-loader/samextract-grammar.y"
-    { fprintf(stderr,"header\n\n"); }
+#line 476 "/home/vartanianmh/devel/sra-tools/tools/bam-loader/samextract-grammar.y"
+    { DBG("header"); }
     break;
 
   case 8:
 
 /* Line 1806 of yacc.c  */
-#line 233 "/home/vartanianmh/devel/sra-tools/tools/bam-loader/samextract-grammar.y"
-    {fprintf(stderr,"sequence\n\n"); }
+#line 477 "/home/vartanianmh/devel/sra-tools/tools/bam-loader/samextract-grammar.y"
+    { DBG("sequence"); }
     break;
 
   case 9:
 
 /* Line 1806 of yacc.c  */
-#line 234 "/home/vartanianmh/devel/sra-tools/tools/bam-loader/samextract-grammar.y"
-    {fprintf(stderr,"program\n\n"); }
+#line 478 "/home/vartanianmh/devel/sra-tools/tools/bam-loader/samextract-grammar.y"
+    { DBG("program"); }
     break;
 
   case 10:
 
 /* Line 1806 of yacc.c  */
-#line 235 "/home/vartanianmh/devel/sra-tools/tools/bam-loader/samextract-grammar.y"
-    {fprintf(stderr,"readgroup\n\n"); }
+#line 479 "/home/vartanianmh/devel/sra-tools/tools/bam-loader/samextract-grammar.y"
+    { DBG("readgroup"); }
     break;
 
   case 11:
 
 /* Line 1806 of yacc.c  */
-#line 236 "/home/vartanianmh/devel/sra-tools/tools/bam-loader/samextract-grammar.y"
-    { fprintf(stderr,"alignment\n\n"); }
+#line 480 "/home/vartanianmh/devel/sra-tools/tools/bam-loader/samextract-grammar.y"
+    { DBG("alignment"); }
     break;
 
   case 12:
 
 /* Line 1806 of yacc.c  */
-#line 240 "/home/vartanianmh/devel/sra-tools/tools/bam-loader/samextract-grammar.y"
-    { }
+#line 484 "/home/vartanianmh/devel/sra-tools/tools/bam-loader/samextract-grammar.y"
+    { 
+        mark_headers("CO");
+    }
     break;
 
   case 13:
 
 /* Line 1806 of yacc.c  */
-#line 245 "/home/vartanianmh/devel/sra-tools/tools/bam-loader/samextract-grammar.y"
+#line 491 "/home/vartanianmh/devel/sra-tools/tools/bam-loader/samextract-grammar.y"
     {
-        fprintf(stderr,"header tagvaluelist\n");
-        check_required_tag("VN");
-        if (!strcmp(tags,"SO ") &&
-            !strcmp(tags,"GO "))
-           fprintf(stderr,"warn: Both SO and GO tags present\n");
-        if (!(strcmp(tags,"SO ") ||
-              strcmp(tags,"GO ")))
-           fprintf(stderr,"warn: neither SO or GO tags present\n");
-        free(tags);
-        tags=strdup("");
+        DBG("header tagvaluelist");
+        check_required_tag(globstate->tags,"VN");
+        if (!strcmp(globstate->tags,"SO ") &&
+            !strcmp(globstate->tags,"GO "))
+           WARN("Both SO and GO tags present");
+        if (!(strcmp(globstate->tags,"SO ") ||
+              strcmp(globstate->tags,"GO ")))
+           WARN("neither SO or GO tags present");
+        free(globstate->tags);
+        globstate->tags=strdup("");
+
+        mark_headers("HD");
     }
     break;
 
   case 14:
 
 /* Line 1806 of yacc.c  */
-#line 261 "/home/vartanianmh/devel/sra-tools/tools/bam-loader/samextract-grammar.y"
+#line 509 "/home/vartanianmh/devel/sra-tools/tools/bam-loader/samextract-grammar.y"
     {
-        fprintf(stderr, "sequence\n");
-        fprintf(stderr," sequences were: %s\n", seqnames);
-        check_required_tag("SN");
-        check_required_tag("LN");
-        free(tags);
-        tags=strdup("");
+        DBG("sequence");
+        DBG(" sequences were: %s", globstate->seqnames);
+        check_required_tag(globstate->tags,"SN");
+        check_required_tag(globstate->tags,"LN");
+        free(globstate->tags);
+        globstate->tags=strdup("");
+        mark_headers("SQ");
     }
     break;
 
   case 15:
 
 /* Line 1806 of yacc.c  */
-#line 273 "/home/vartanianmh/devel/sra-tools/tools/bam-loader/samextract-grammar.y"
+#line 522 "/home/vartanianmh/devel/sra-tools/tools/bam-loader/samextract-grammar.y"
     {
-        fprintf(stderr,"ids were: %s\n", ids);
-        fprintf(stderr, "program\n");
-        check_required_tag("ID");
-        free(tags);
-        tags=strdup("");
+        DBG("ids were: %s", globstate->ids);
+        DBG("program");
+        check_required_tag(globstate->tags,"ID");
+        free(globstate->tags);
+        globstate->tags=strdup("");
+        mark_headers("PG");
      }
     break;
 
   case 16:
 
 /* Line 1806 of yacc.c  */
-#line 285 "/home/vartanianmh/devel/sra-tools/tools/bam-loader/samextract-grammar.y"
+#line 535 "/home/vartanianmh/devel/sra-tools/tools/bam-loader/samextract-grammar.y"
     {
-        fprintf(stderr, "readgroup\n");
-        fprintf(stderr,"ids were: %s\n", ids);
-        check_required_tag("ID");
-        free(tags);
-        tags=strdup("");
+        DBG("readgroup");
+        DBG("ids were: %s", globstate->ids);
+        check_required_tag(globstate->tags,"ID");
+        free(globstate->tags);
+        globstate->tags=strdup("");
+        mark_headers("RG");
      }
     break;
 
   case 17:
 
 /* Line 1806 of yacc.c  */
-#line 294 "/home/vartanianmh/devel/sra-tools/tools/bam-loader/samextract-grammar.y"
-    { fprintf(stderr, " one tagvaluelist\n"); }
+#line 545 "/home/vartanianmh/devel/sra-tools/tools/bam-loader/samextract-grammar.y"
+    { DBG(" one tagvaluelist"); }
     break;
 
   case 18:
 
 /* Line 1806 of yacc.c  */
-#line 295 "/home/vartanianmh/devel/sra-tools/tools/bam-loader/samextract-grammar.y"
-    { fprintf(stderr, " many tagvaluelist\n"); }
+#line 546 "/home/vartanianmh/devel/sra-tools/tools/bam-loader/samextract-grammar.y"
+    { DBG(" many tagvaluelist"); }
     break;
 
   case 19:
 
 /* Line 1806 of yacc.c  */
-#line 298 "/home/vartanianmh/devel/sra-tools/tools/bam-loader/samextract-grammar.y"
+#line 549 "/home/vartanianmh/devel/sra-tools/tools/bam-loader/samextract-grammar.y"
     {
-        // TODO: Move into function
-        fprintf(stderr,"tagvalue:%s=%s\n", (yyvsp[(2) - (4)].strval), (yyvsp[(4) - (4)].strval));
+        DBG("tagvalue:%s=%s", (yyvsp[(2) - (4)].strval), (yyvsp[(4) - (4)].strval));
         const char * tag=(yyvsp[(2) - (4)].strval);
         const char * value=(yyvsp[(4) - (4)].strval);
-
-        if (strlen(tag)!=2)
-        {
-            fprintf(stderr,"tag '%s' must be 2 characters\n", tag);
-        }
-
-        if (islower(tag[0] &&
-            islower(tag[1])))
-        {
-            fprintf(stderr,"optional tag\n");
-        } else
-        {
-            validate(tag, value);
-            tags=realloc(tags, strlen(tags) + strlen(tag) + 1 + 1);
-            strcat(tags,tag); strcat(tags," ");
-
-            if (!strcmp(tag,"SN"))
-            {
-                char * s=malloc(strlen(value)+2);
-                strcpy(s,value);
-                strcat(s," ");
-                if (strstr(seqnames,s))
-                {
-                    fprintf(stderr,"error: duplicate sequence %s\n", value);
-                }
-                seqnames=realloc(seqnames,strlen(seqnames) + strlen(value) + 1 + 1);
-                strcat(seqnames,s);
-                free(s);
-            }
-            if (!strcmp(tag,"ID"))
-            {
-                char * s=malloc(strlen(value)+2);
-                strcpy(s,value);
-                strcat(s," ");
-                if (strstr(ids,s))
-                {
-                    fprintf(stderr,"error: duplicate id %s\n", value);
-                }
-                ids=realloc(ids,strlen(ids) + strlen(value) + 1 + 1);
-                strcat(ids,s);
-                free(s);
-            }
-        }
+        process_tagvalue(tag,value);
         free((yyvsp[(2) - (4)].strval));
         free((yyvsp[(4) - (4)].strval));
         }
@@ -1739,41 +1943,47 @@ yyreduce:
   case 20:
 
 /* Line 1806 of yacc.c  */
-#line 349 "/home/vartanianmh/devel/sra-tools/tools/bam-loader/samextract-grammar.y"
-    { fprintf(stderr,"two tabs\n"); }
+#line 557 "/home/vartanianmh/devel/sra-tools/tools/bam-loader/samextract-grammar.y"
+    { ERR("two tabs"); }
     break;
 
   case 21:
 
 /* Line 1806 of yacc.c  */
-#line 350 "/home/vartanianmh/devel/sra-tools/tools/bam-loader/samextract-grammar.y"
-    { fprintf(stderr,"empty tags\n"); }
+#line 558 "/home/vartanianmh/devel/sra-tools/tools/bam-loader/samextract-grammar.y"
+    { ERR("empty tags"); }
     break;
 
   case 22:
 
 /* Line 1806 of yacc.c  */
-#line 351 "/home/vartanianmh/devel/sra-tools/tools/bam-loader/samextract-grammar.y"
+#line 559 "/home/vartanianmh/devel/sra-tools/tools/bam-loader/samextract-grammar.y"
     {
         const char * tag=(yyvsp[(2) - (3)].strval);
-        fprintf(stderr,"error: warning: malformed TAG:VALUE 'TAB %s(NOT COLON)...'\n", tag);
+        WARN("malformed TAG:VALUE 'TAB %s(NOT COLON)...'", tag);
         }
     break;
 
   case 23:
 
 /* Line 1806 of yacc.c  */
-#line 355 "/home/vartanianmh/devel/sra-tools/tools/bam-loader/samextract-grammar.y"
-    { fprintf(stderr,"empty tags\n"); }
+#line 563 "/home/vartanianmh/devel/sra-tools/tools/bam-loader/samextract-grammar.y"
+    { WARN("empty tags"); }
     break;
 
   case 24:
 
 /* Line 1806 of yacc.c  */
-#line 360 "/home/vartanianmh/devel/sra-tools/tools/bam-loader/samextract-grammar.y"
+#line 568 "/home/vartanianmh/devel/sra-tools/tools/bam-loader/samextract-grammar.y"
     {
-        fprintf(stderr," avlist qname:%s fields=%zu\n", (yyvsp[(1) - (2)].strval), alignfields);
+        DBG(" avlist qname:%s fields=%zu", (yyvsp[(1) - (2)].strval), alignfields);
         alignfields=2;
+        Alignment * align=calloc(1,sizeof(Alignment));
+        align->read=globstate->read;
+        align->cigar=globstate->cigar;
+        align->rname=globstate->rname;
+        align->pos=globstate->pos;
+        VectorAppend(&globstate->alignments,NULL,align);
         free((yyvsp[(1) - (2)].strval));
     }
     break;
@@ -1781,192 +1991,26 @@ yyreduce:
   case 25:
 
 /* Line 1806 of yacc.c  */
-#line 368 "/home/vartanianmh/devel/sra-tools/tools/bam-loader/samextract-grammar.y"
-    { fprintf(stderr," one av\n"); }
+#line 582 "/home/vartanianmh/devel/sra-tools/tools/bam-loader/samextract-grammar.y"
+    { DBG(" one av"); }
     break;
 
   case 26:
 
 /* Line 1806 of yacc.c  */
-#line 369 "/home/vartanianmh/devel/sra-tools/tools/bam-loader/samextract-grammar.y"
+#line 583 "/home/vartanianmh/devel/sra-tools/tools/bam-loader/samextract-grammar.y"
     {
-           // fprintf(stderr,"bison: many avlist\n");
+           // TODO"bison: many avlist");
             }
     break;
 
   case 27:
 
 /* Line 1806 of yacc.c  */
-#line 376 "/home/vartanianmh/devel/sra-tools/tools/bam-loader/samextract-grammar.y"
+#line 590 "/home/vartanianmh/devel/sra-tools/tools/bam-loader/samextract-grammar.y"
     {
-    // TODO: Move into function
         const char * field=(yyvsp[(2) - (2)].strval);
-        const char * opt="(required)";
-        if (alignfields>=12) opt="(optional)";
-        fprintf(stderr,"alignvalue #%zu%s: %s\n", alignfields, opt, field);
-        switch (alignfields)
-        {
-            case 2: // FLAG
-            {
-                int flag;
-                if (sscanf(field, "%d", &flag)!=1 ||
-                    flag < 0 ||
-                    flag > 4095)
-                {
-                    fprintf(stderr,"error parsing FLAG: %s\n", field);
-                }
-                fprintf(stderr,"flag is %d\n",flag);
-                break;
-            }
-            case 3: // RNAME
-            {
-                const char * rname=field;
-                if (!regexcheck("\\*|[!-)+-<>-~][!-~]*",rname))
-                {
-                    fprintf(stderr,"error parsing RNAME\n");
-                }
-                fprintf(stderr,"rname is %s\n",rname);
-                break;
-            }
-            case 4: // POS
-            {
-                int pos;
-                if (sscanf(field, "%d", &pos)!=1 ||
-                    pos < 0 ||
-                    pos > INT32_MAX)
-                {
-                    fprintf(stderr,"error parsing POS: %s\n", field);
-                }
-                fprintf(stderr,"pos is %d\n",pos);
-                break;
-            }
-            case 5: // MAPQ
-            {
-                int mapq;
-                if (sscanf(field, "%d", &mapq)!=1 ||
-                    mapq < 0 ||
-                    mapq > UINT8_MAX)
-                {
-                    fprintf(stderr,"error parsing MAPQ: %s\n", field);
-                }
-                fprintf(stderr,"mapq is %d\n", mapq);
-                break;
-            }
-            case 6: // CIGAR
-            {
-                const char * cigar=field;
-                if (!regexcheck("\\*|([0-9]+[MIDNSHPX=])+",cigar))
-                {
-                    fprintf(stderr,"error parsing cigar\n");
-                }
-                fprintf(stderr,"cigar is %s\n",cigar);
-                break;
-            }
-            case 7: // RNEXT
-            {
-                const char * rnext=field;
-                if (!regexcheck("\\*|=|[!-)+-<>-~][!-~]*",rnext))
-                {
-                    fprintf(stderr,"error parsing rnext\n");
-                }
-                fprintf(stderr,"rnext is %s\n",rnext);
-                break;
-            }
-            case 8: // PNEXT
-            {
-                int pnext;
-                if (sscanf(field, "%d", &pnext)!=1 ||
-                    pnext < 0 ||
-                    pnext > INT32_MAX)
-                {
-                    fprintf(stderr,"error parsing PNEXT: %s\n", field);
-                }
-                fprintf(stderr,"pnext is %d\n",pnext);
-                break;
-            }
-            case 9: // TLEN
-            {
-                int tlen;
-                if (sscanf(field, "%d", &tlen)!=1 ||
-                    tlen < INT32_MIN ||
-                    tlen > INT32_MAX)
-                {
-                    fprintf(stderr,"error parsing TLEN: %s\n", field);
-                }
-                fprintf(stderr,"tlen is %d\n", tlen);
-                break;
-            }
-            case 10: // SEQ
-            {
-                const char * seq=field;
-                if (!regexcheck("\\*|[A-Za-z=.]+",seq))
-                {
-                    fprintf(stderr,"error parsing seq\n");
-                }
-                fprintf(stderr,"seq is %s\n",seq);
-                break;
-            }
-            case 11: // QUAL
-            {
-                const char * qual=field;
-                if (!regexcheck("[!-~]+",qual))
-                {
-                    fprintf(stderr,"error parsing qual\n");
-                }
-                fprintf(stderr,"qual is %s\n", qual);
-                break;
-            }
-            default: // Optional
-            {
- //               /TT:t:
-                if ((strlen(field)<5) ||
-                  field[2]!=':' ||
-                  field[4]!=':')
-                  {
-                    fprintf(stderr,"error: invald tagtypevalue:%s\n", field);
-                  }
-                const char type=field[3];
-                if (!checkopttagtype(field))
-                {
-                    fprintf(stderr,"Optional field tag %s doesn't match type\n", field);
-
-                }
-                const char * value=&field[5];
-                switch (type)
-                {
-                    case 'A':
-                        if (!regexcheck("[!-~]", value))
-                            fprintf(stderr,"error: value doesn't match A type:%s\n",value);
-                        break;
-                    case 'i':
-                        if (!regexcheck("[-+]?[0-9]+", value))
-                            fprintf(stderr,"error: value doesn't match i type:%s\n",value);
-                        break;
-                    case 'f':
-                        if (!regexcheck("[-+]?[0-9]*\\.?[0-9]+([eE][-+]?[0-9]+)?", value))
-                            fprintf(stderr,"error: value doesn't match f type:%s\n",value);
-                        break;
-                    case 'Z':
-                        if (!regexcheck("[ !-~]*", value))
-                            fprintf(stderr,"error: value doesn't match Z type:%s\n",value);
-                        break;
-                    case 'H':
-                        if (!regexcheck("([0-9A-F][0-9A-F])*", value))
-                            fprintf(stderr,"error: value doesn't match H type:%s\n",value);
-                        break;
-                    case 'B':
-                        if
-                        (!regexcheck("[cCsSiIf](,[-+]?[0-9]*\\.?[0-9]+(eE][-+]?[0-9]+)?)+", value))
-                            fprintf(stderr,"error: value doesn't match B type:%s\n",value);
-                        break;
-                    default:
-                        break;
-                }
-                fprintf(stderr,"optional field:%s\n", field);
-                break;
-            }
-        }
-        ++alignfields;
+        process_align(field);
         free((yyvsp[(2) - (2)].strval));
     }
     break;
@@ -1974,7 +2018,7 @@ yyreduce:
 
 
 /* Line 1806 of yacc.c  */
-#line 1978 "/home/vartanianmh/devel/sra-tools/tools/bam-loader/samextract-grammar.c"
+#line 2022 "/home/vartanianmh/devel/sra-tools/tools/bam-loader/samextract-grammar.c"
       default: break;
     }
   /* User semantic actions sometimes alter yychar, and that requires
@@ -2205,7 +2249,7 @@ yyreturn:
 
 
 /* Line 2067 of yacc.c  */
-#line 549 "/home/vartanianmh/devel/sra-tools/tools/bam-loader/samextract-grammar.y"
+#line 597 "/home/vartanianmh/devel/sra-tools/tools/bam-loader/samextract-grammar.y"
 
 
 

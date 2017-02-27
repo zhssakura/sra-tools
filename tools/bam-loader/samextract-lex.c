@@ -1,25 +1,24 @@
+#line 2 "/home/vartanianmh/devel/sra-tools/tools/bam-loader/samextract-lex.c"
 #line 45 "/home/vartanianmh/devel/sra-tools/tools/bam-loader/samextract-lex.l"
 #include <stdio.h>
 #include <string.h>
+#include "samextract.h"
 #include "samextract-tokens.h"
 
-//#define YYSTYPE char
+/* #define YYSTYPE char data type for llval */
 #define LEXDEBUG 0
 
-#define YY_NO_INPUT
-#undef YY_INPUT
+/* #define YY_NO_INPUT */
+char * lexbuf=NULL;
+Extractor * globstate=NULL;
+int moredata(char * buf, int * numbytes, size_t maxbytes);
 #define YY_INPUT(buf,numbytes,maxbytes) moredata(buf,&numbytes,maxbytes)
-extern int moredata(char * buf,int * numbytes, int maxbytes);
 
-
-    // do { if (LEXDEBUG) fprintf(stderr, "%s:%d:%s(): " fmt, __FILE__, __LINE__, __func__, __VA_ARGS__); } while (0)
-#define lex_print(fmt, ...) \
-    do { if (LEXDEBUG) fprintf(stderr, fmt, ##__VA_ARGS__); } while (0)
 
   
 
 
-#line 23 "<stdout>"
+#line 22 "/home/vartanianmh/devel/sra-tools/tools/bam-loader/samextract-lex.c"
 
 #define  YY_INT_ALIGNED short int
 
@@ -10237,16 +10236,19 @@ HWI-...
 
 /* definitions */
 /* No @ in first, to distinguish from headers */
+/* See also bison's lex-param/parse-param */
+/*%option extra-type="Extractor *" */
 /* stop after first EOF */
+/* Don't use these functions */
+#define YY_NO_INPUT 1
 /* Not a TTY */
 #define YY_NO_UNISTD_H 1
-/* Allow multitheading */
 /* %option reentrant */
-/* SAMlex takes yylval */
 /* %option bison-bridge */
+/* Start states */
 
 
-#line 10250 "<stdout>"
+#line 10252 "/home/vartanianmh/devel/sra-tools/tools/bam-loader/samextract-lex.c"
 
 #define INITIAL 0
 #define INALIGNMENT 1
@@ -10415,10 +10417,10 @@ YY_DECL
 	register char *yy_cp, *yy_bp;
 	register int yy_act;
     
-#line 94 "/home/vartanianmh/devel/sra-tools/tools/bam-loader/samextract-lex.l"
+#line 96 "/home/vartanianmh/devel/sra-tools/tools/bam-loader/samextract-lex.l"
 
  /* rules */
-#line 10422 "<stdout>"
+#line 10424 "/home/vartanianmh/devel/sra-tools/tools/bam-loader/samextract-lex.c"
 
 	if ( !(yy_init) )
 		{
@@ -10502,89 +10504,88 @@ do_action:	/* This label is used only to access EOF actions. */
 
 case 1:
 YY_RULE_SETUP
-#line 96 "/home/vartanianmh/devel/sra-tools/tools/bam-loader/samextract-lex.l"
-{ lex_print( "lex: Header\n"); return HEADER; }
+#line 98 "/home/vartanianmh/devel/sra-tools/tools/bam-loader/samextract-lex.l"
+{ DBG( " Header"); return HEADER; }
 	YY_BREAK
 case 2:
 YY_RULE_SETUP
-#line 97 "/home/vartanianmh/devel/sra-tools/tools/bam-loader/samextract-lex.l"
-{ lex_print( "lex: SQ\n"); return SEQUENCE; }
+#line 99 "/home/vartanianmh/devel/sra-tools/tools/bam-loader/samextract-lex.l"
+{ DBG( " SQ"); return SEQUENCE; }
 	YY_BREAK
 case 3:
 YY_RULE_SETUP
-#line 98 "/home/vartanianmh/devel/sra-tools/tools/bam-loader/samextract-lex.l"
-{ lex_print( "lex: RG\n"); return READGROUP; }
+#line 100 "/home/vartanianmh/devel/sra-tools/tools/bam-loader/samextract-lex.l"
+{ DBG( " RG"); return READGROUP; }
 	YY_BREAK
 case 4:
 YY_RULE_SETUP
-#line 99 "/home/vartanianmh/devel/sra-tools/tools/bam-loader/samextract-lex.l"
-{ lex_print( "lex: PG\n"); return PROGRAM; }
+#line 101 "/home/vartanianmh/devel/sra-tools/tools/bam-loader/samextract-lex.l"
+{ DBG( " PG"); return PROGRAM; }
 	YY_BREAK
 case 5:
 /* rule 5 can match eol */
 YY_RULE_SETUP
-#line 100 "/home/vartanianmh/devel/sra-tools/tools/bam-loader/samextract-lex.l"
-{ lex_print( "lex: Comment\n"); return COMMENT; }
+#line 102 "/home/vartanianmh/devel/sra-tools/tools/bam-loader/samextract-lex.l"
+{ DBG( " Comment"); return COMMENT; }
 	YY_BREAK
-/* TODO: replace strdups with pool/chunk allocator */
 case 6:
 YY_RULE_SETUP
-#line 103 "/home/vartanianmh/devel/sra-tools/tools/bam-loader/samextract-lex.l"
-{ BEGIN INALIGNMENT; SAMlval.strval=strdup(SAMtext); lex_print("\nlex: alignment qname, INALIGNMENT\n"); return QNAME; }
+#line 105 "/home/vartanianmh/devel/sra-tools/tools/bam-loader/samextract-lex.l"
+{ BEGIN INALIGNMENT; SAMlval.strval=strdup(SAMtext); DBG(" alignment qname, INALIGNMENT"); return QNAME; }
 	YY_BREAK
 case 7:
 YY_RULE_SETUP
-#line 104 "/home/vartanianmh/devel/sra-tools/tools/bam-loader/samextract-lex.l"
-{ lex_print("lex:CONTROLCHAR1\n"); return CONTROLCHAR; }
+#line 106 "/home/vartanianmh/devel/sra-tools/tools/bam-loader/samextract-lex.l"
+{ DBG("CONTROLCHAR1"); return CONTROLCHAR; }
 	YY_BREAK
 case 8:
 YY_RULE_SETUP
-#line 105 "/home/vartanianmh/devel/sra-tools/tools/bam-loader/samextract-lex.l"
-{ lex_print("lex: tab\n"); return TAB;}
+#line 107 "/home/vartanianmh/devel/sra-tools/tools/bam-loader/samextract-lex.l"
+{ DBG(" tab"); return TAB;}
 	YY_BREAK
 case 9:
 YY_RULE_SETUP
-#line 106 "/home/vartanianmh/devel/sra-tools/tools/bam-loader/samextract-lex.l"
-{ BEGIN INITIAL; lex_print("lex: tab INITIAL\n"); return TAB;}
+#line 108 "/home/vartanianmh/devel/sra-tools/tools/bam-loader/samextract-lex.l"
+{ BEGIN INITIAL; DBG(" tab INITIAL"); return TAB;}
 	YY_BREAK
 case 10:
 /* rule 10 can match eol */
 YY_RULE_SETUP
-#line 108 "/home/vartanianmh/devel/sra-tools/tools/bam-loader/samextract-lex.l"
-{ BEGIN INITIAL; lex_print("lex: eol INITIAL\n"); return EOL;}
+#line 110 "/home/vartanianmh/devel/sra-tools/tools/bam-loader/samextract-lex.l"
+{ BEGIN INITIAL; DBG(" eol INITIAL"); return EOL;}
 	YY_BREAK
 case 11:
 YY_RULE_SETUP
-#line 109 "/home/vartanianmh/devel/sra-tools/tools/bam-loader/samextract-lex.l"
-{ SAMlval.strval=strdup(SAMtext); lex_print("lex: alignvalue\n"); return ALIGNVALUE; }
+#line 111 "/home/vartanianmh/devel/sra-tools/tools/bam-loader/samextract-lex.l"
+{ SAMlval.strval=strdup(SAMtext); DBG(" alignvalue"); return ALIGNVALUE; }
 	YY_BREAK
 case 12:
 YY_RULE_SETUP
-#line 110 "/home/vartanianmh/devel/sra-tools/tools/bam-loader/samextract-lex.l"
-{ SAMlval.strval=strdup(SAMtext); lex_print("lex: Valid Tag:%s\n", SAMtext); return TAG; }
+#line 112 "/home/vartanianmh/devel/sra-tools/tools/bam-loader/samextract-lex.l"
+{ SAMlval.strval=strdup(SAMtext); DBG(" Valid Tag:%s", SAMtext); return TAG; }
 	YY_BREAK
 case 13:
 YY_RULE_SETUP
-#line 111 "/home/vartanianmh/devel/sra-tools/tools/bam-loader/samextract-lex.l"
-{ BEGIN AFTERCOLON; lex_print("lex: colon AFTERCOLON\n"); return COLON;}
+#line 113 "/home/vartanianmh/devel/sra-tools/tools/bam-loader/samextract-lex.l"
+{ BEGIN AFTERCOLON; DBG(" colon AFTERCOLON"); return COLON;}
 	YY_BREAK
 case 14:
 YY_RULE_SETUP
-#line 112 "/home/vartanianmh/devel/sra-tools/tools/bam-loader/samextract-lex.l"
-{ SAMlval.strval=strdup(SAMtext); lex_print("lex: Value:%s\n", SAMtext); return VALUE; }
+#line 114 "/home/vartanianmh/devel/sra-tools/tools/bam-loader/samextract-lex.l"
+{ SAMlval.strval=strdup(SAMtext); DBG(" Value:%s", SAMtext); return VALUE; }
 	YY_BREAK
 case 15:
 /* rule 15 can match eol */
 YY_RULE_SETUP
-#line 114 "/home/vartanianmh/devel/sra-tools/tools/bam-loader/samextract-lex.l"
-lex_print("DEFAULT '%c' ", *SAMtext);
+#line 116 "/home/vartanianmh/devel/sra-tools/tools/bam-loader/samextract-lex.l"
+DBG("DEFAULT '%c' ", *SAMtext);
 	YY_BREAK
 case 16:
 YY_RULE_SETUP
-#line 116 "/home/vartanianmh/devel/sra-tools/tools/bam-loader/samextract-lex.l"
+#line 118 "/home/vartanianmh/devel/sra-tools/tools/bam-loader/samextract-lex.l"
 YY_FATAL_ERROR( "flex scanner jammed" );
 	YY_BREAK
-#line 10588 "<stdout>"
+#line 10589 "/home/vartanianmh/devel/sra-tools/tools/bam-loader/samextract-lex.c"
 case YY_STATE_EOF(INITIAL):
 case YY_STATE_EOF(INALIGNMENT):
 case YY_STATE_EOF(AFTERCOLON):
@@ -11548,8 +11549,40 @@ void SAMfree (void * ptr )
 
 #define YYTABLES_NAME "yytables"
 
-#line 116 "/home/vartanianmh/devel/sra-tools/tools/bam-loader/samextract-lex.l"
+#line 118 "/home/vartanianmh/devel/sra-tools/tools/bam-loader/samextract-lex.l"
 
 
- /* user code */
+
+bool SAM_parsebegin(Extractor * state)
+{
+    globstate=state;
+    return true;
+}
+
+void SAM_parseend(Extractor * state)
+{
+    free(lexbuf);
+    lexbuf=NULL;
+}
+
+int SAM_parsebuffer(Extractor * state, char * str, size_t size)
+{
+    DBG("Parsing");
+    lexbuf=realloc(lexbuf,size+2);
+    memmove(lexbuf,str,size);
+    lexbuf[size]='\0';
+    SAMparse(&state);
+    return 0;
+}
+
+int moredata(char * buf, int * numbytes, size_t maxbytes)
+{
+    DBG("moredata %p %d", buf, maxbytes);
+    strcpy(buf,lexbuf);
+    *numbytes=strlen(buf);
+    lexbuf[0]='\0';
+    return 0;
+}
+
+
 

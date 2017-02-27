@@ -61,7 +61,7 @@ typedef union YYSTYPE
 {
 
 /* Line 2068 of yacc.c  */
-#line 194 "/home/vartanianmh/devel/sra-tools/tools/bam-loader/samextract-grammar.y"
+#line 434 "/home/vartanianmh/devel/sra-tools/tools/bam-loader/samextract-grammar.y"
 
  int intval;
  char * strval;

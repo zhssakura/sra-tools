@@ -127,17 +127,19 @@ $(BINDIR)/samview: $(SAMVIEW_OBJ)
 SAMEXTRACT_SRC = \
     samextract \
     samextract-lex \
+    samextract-lib \
     samextract-grammar
 
 samextract-grammar.c:
-	bison --warnings=error -o $(SRCDIR)/samextract-grammar.c --defines=$(SRCDIR)/samextract-tokens.h -v -Wall $(SRCDIR)/samextract-grammar.y;sleep 1
+# 	/net/snowman/vol/projects/trace_software/tools/x86_64/bin/bison --warnings=error -o $(SRCDIR)/samextract-grammar.c --defines=$(SRCDIR)/samextract-tokens.h -v -Wall $(SRCDIR)/samextract-grammar.y
+	bison --warnings=error -o $(SRCDIR)/samextract-grammar.c --defines=$(SRCDIR)/samextract-tokens.h -v -Wall $(SRCDIR)/samextract-grammar.y
 
 ifeq (dbg,$(BUILD))
-	FLEX_DEBUG=-d
+	FLEX_DEBUG=-d -T
 endif
 
 samextract-lex.c:
-	flex -f $(FLEX_DEBUG) -t $(SRCDIR)/samextract-lex.l > $(SRCDIR)/samextract-lex.c;sleep 1
+	flex -f $(FLEX_DEBUG) -o $(SRCDIR)/samextract-lex.c $(SRCDIR)/samextract-lex.l
 
 SAMEXTRACT_OBJ = \
 	$(addsuffix .$(OBJX),$(SAMEXTRACT_SRC))
