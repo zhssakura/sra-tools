@@ -38,7 +38,6 @@
 
 #include <kfs/directory.h>
 #include <kfs/file.h>
-
 #include <kdb/btree.h>
 #include <kdb/manager.h>
 #include <kdb/database.h>
@@ -83,7 +82,6 @@
 #include <limits.h>
 #include <time.h>
 #include <zlib.h>
-
 #include "bam.h"
 #include "bam-alignment.h"
 #include "Globals.h"
@@ -92,7 +90,6 @@
 #include "alignment-writer.h"
 #include "mem-bank.h"
 #include "low-match-count.h"
-#include "var-expand-module.h"
 
 #define NUM_ID_SPACES (256u)
 
@@ -1542,7 +1539,6 @@ static char const *getLinkageGroup(BAM_Alignment const *const rec)
 static rc_t ProcessBAM(char const bamFile[], context_t *ctx, VDatabase *db,
                         /* data outputs */
                        Reference *ref, Sequence *seq, Alignment *align,
-                       var_expand_data *var_expand_object,
                        /* output parameters */
                        bool *had_alignments, bool *had_sequences)
 {
@@ -1676,7 +1672,6 @@ static rc_t ProcessBAM(char const bamFile[], context_t *ctx, VDatabase *db,
         bool wasPromoted = false;
         char const *barCode = NULL;
         char const *linkageGroup;
-        ReferenceSeq const *referenceSequence = NULL;
 
         ++recordsRead;
         
@@ -2141,7 +2136,7 @@ MIXED_BASE_AND_COLOR:
                                        rna_orient == '-' ? NCBI_align_ro_intron_minus :
                                                    hasCG ? NCBI_align_ro_complete_genomics :
                                                            NCBI_align_ro_intron_unknown;
-                rc = ReferenceRead(ref, &data, rpos, cigBuf.base, opCount, seqDNA, readlen, intronType, &matches, &misses, &referenceSequence);
+                rc = ReferenceRead(ref, &data, rpos, cigBuf.base, opCount, seqDNA, readlen, intronType, &matches, &misses);
             }
             if (rc == 0) {
                 int const i = readNo - 1;
@@ -2237,13 +2232,6 @@ MIXED_BASE_AND_COLOR:
                 break;
             }
         }
-
-        /* here is the hook for the VAR-EXPAND-module... */
-        if ( isPrimary && aligned )
-        {
-            rc_t rc1 = var_expand_handle( var_expand_object, rec, referenceSequence );
-        }
-        
         if (G.mode == mode_Archive)
             goto WRITE_SEQUENCE;
         else
@@ -2888,7 +2876,6 @@ static rc_t ArchiveBAM(VDBManager *mgr, VDatabase *db,
     static context_t *ctx = &GlobalContext;
     bool has_sequences = false;
     unsigned i;
-    var_expand_data *var_expand_object = NULL;
 
     *has_alignments = false;
     rc = ReferenceInit(&ref, mgr, db);
@@ -2897,7 +2884,7 @@ static rc_t ArchiveBAM(VDBManager *mgr, VDatabase *db,
 
     if (G.onlyVerifyReferences) {
         for (i = 0; i < bamFiles && rc == 0; ++i) {
-            rc = ProcessBAM(bamFile[i], NULL, db, &ref, NULL, NULL, NULL, NULL, NULL);
+            rc = ProcessBAM(bamFile[i], NULL, db, &ref, NULL, NULL, NULL, NULL);
         }
         ReferenceWhack(&ref, false);
         return rc;
@@ -2909,17 +2896,12 @@ static rc_t ArchiveBAM(VDBManager *mgr, VDatabase *db,
     if (rc)
         return rc;
 
-    /* VAR-EXPAND initialization */
-    rc = var_expand_init( &var_expand_object );
-    if ( rc != 0 )
-        return rc;
-
     ctx->pass = 1;
     for (i = 0; i < bamFiles && rc == 0; ++i) {
         bool this_has_alignments = false;
         bool this_has_sequences = false;
 
-        rc = ProcessBAM(bamFile[i], ctx, db, &ref, &seq, align, var_expand_object, &this_has_alignments, &this_has_sequences);
+        rc = ProcessBAM(bamFile[i], ctx, db, &ref, &seq, align, &this_has_alignments, &this_has_sequences);
         *has_alignments |= this_has_alignments;
         has_sequences |= this_has_sequences;
     }
@@ -2927,7 +2909,7 @@ static rc_t ArchiveBAM(VDBManager *mgr, VDatabase *db,
         bool this_has_alignments = false;
         bool this_has_sequences = false;
 
-        rc = ProcessBAM(seqFile[i], ctx, db, &ref, &seq, align, var_expand_object, &this_has_alignments, &this_has_sequences);
+        rc = ProcessBAM(seqFile[i], ctx, db, &ref, &seq, align, &this_has_alignments, &this_has_sequences);
         *has_alignments |= this_has_alignments;
         has_sequences |= this_has_sequences;
     }
@@ -2975,9 +2957,6 @@ static rc_t ArchiveBAM(VDBManager *mgr, VDatabase *db,
     SequenceWhack(&seq, rc == 0);
 
     ContextRelease(ctx, continuing);
-    
-    /* VAR-EXPAND finished */
-    var_expand_finish( var_expand_object );
 
     if (rc == 0) {
         (void)LOGMSG(klogInfo, "Successfully loaded all files");
