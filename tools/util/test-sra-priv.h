@@ -36,6 +36,14 @@ extern "C" {
 #endif
 
 
+struct KEndPoint;
+struct KNSManager;
+
+
+rc_t endpoint_to_string ( char * buffer, size_t buflen, struct KEndPoint * ep );
+
+rc_t MainQuickCheck ( const struct KNSManager * mgr );
+
 rc_t PrintOS(bool xml);
 
 

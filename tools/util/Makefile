@@ -175,6 +175,7 @@ $(BINDIR)/testld: $(TESTLD_OBJ)
 #
 
 T_SRC = \
+	diagnose \
 	PrintOS \
 	test-sra \
 

@@ -523,6 +523,7 @@ static char** MainInit(Main *self, int argc, char *argv[], int *argi) {
     return argv2;
 }
 
+/*
 static rc_t MainCallCgiImpl(const Main *self,
     const KConfigNode *node, const char *acc)
 {
@@ -702,6 +703,8 @@ static rc_t MainQuickCheck(const Main *self) {
     }
     return rc;
 }
+*/
+/******************************************************************************/
 
 static rc_t MainPrintConfig(const Main *self) {
     rc_t rc = 0;
@@ -719,8 +722,8 @@ static rc_t MainPrintConfig(const Main *self) {
     return rc;
 }
 
-static
-rc_t _KDBPathTypePrint(const char *head, KPathType type, const char *tail)
+static rc_t _KDBPathTypePrint ( const char * head,
+                                KPathType type, const char * tail )
 {
     rc_t rc = 0;
     rc_t rc2 = 0;
@@ -943,8 +946,8 @@ static rc_t _VDBManagerReportRemote
     }
 }
 
-static
-rc_t _KDirectoryFileHeaderReport(const KDirectory *self, const char *path)
+static rc_t _KDirectoryFileHeaderReport ( const KDirectory * self,
+                                          const char *path )
 {
     rc_t rc = 0;
     char hdr[8] = "";
@@ -999,7 +1002,9 @@ static rc_t MainReport(const Main *self,
     return rc;
 }
 
-static rc_t MainReportRemote(const Main *self, const char *name, int64_t size) {
+static rc_t MainReportRemote ( const Main * self,
+                               const char * name, int64_t size )
+{
     rc_t rc = 0;
 
     assert(self);
@@ -2166,7 +2171,6 @@ static rc_t _KartPrintNumbered(const Kart *self, bool xml) {
     return 0;
 }
 
-
 static rc_t ipv4_endpoint_to_string(char *buffer, size_t buflen, KEndPoint *ep)
 {
 	uint32_t b[4];
@@ -2199,8 +2203,7 @@ static rc_t ipc_endpoint_to_string(char *buffer, size_t buflen, KEndPoint *ep)
 	return string_printf( buffer, buflen, NULL, "ipc: %s", ep->u.ipc_name );
 }
 
-static
-rc_t endpoint_to_string( char * buffer, size_t buflen, KEndPoint * ep )
+rc_t endpoint_to_string( char * buffer, size_t buflen, struct KEndPoint * ep )
 {
 	rc_t rc;
 	switch( ep->type )
@@ -2209,7 +2212,7 @@ rc_t endpoint_to_string( char * buffer, size_t buflen, KEndPoint * ep )
 		case epIPV6 : rc = ipv6_endpoint_to_string( buffer, buflen, ep ); break;
 		case epIPC  : rc = ipc_endpoint_to_string( buffer, buflen, ep ); break;
 		default     : rc = string_printf( buffer, buflen, NULL,
-                          "unknown endpoint-tyep %d", ep->type ); break;
+                          "unknown endpoint-type %d", ep->type ); break;
 	}
 	return rc;
 }
@@ -3771,28 +3774,30 @@ rc_t CC KMain(int argc, char *argv[]) {
         if (prms.xml)
             OUTMSG(("<%s>\n", root));
 
-        if (MainHasTest(&prms, eNgs))
-            _MainPrintNgsInfo(&prms);
+        if ( prms . full ) {
+            if (MainHasTest(&prms, eNgs))
+                _MainPrintNgsInfo(&prms);
 
-        MainPrintVersion(&prms);
+            MainPrintVersion(&prms);
 
-        if (MainHasTest(&prms, eCfg)) {
-            rc_t rc2 = MainPrintConfig(&prms);
-            if (rc == 0 && rc2 != 0)
-                rc = rc2;
+            if (MainHasTest(&prms, eCfg)) {
+                rc_t rc2 = MainPrintConfig(&prms);
+                if (rc == 0 && rc2 != 0)
+                    rc = rc2;
+            }
+
+            if (MainHasTest(&prms, eOS))
+                PrintOS(prms.xml);
+
+            if (MainHasTest(&prms, eAscp))
+                MainPrintAscp(&prms);
+
+            if (MainHasTest(&prms, eNetwork))
+                MainNetwotk(&prms, NULL, prms.xml ? "  " : "", eol);
         }
 
-        if (MainHasTest(&prms, eOS))
-            PrintOS(prms.xml);
-
-        if (MainHasTest(&prms, eAscp))
-            MainPrintAscp(&prms);
-
-        if (MainHasTest(&prms, eNetwork))
-            MainNetwotk(&prms, NULL, prms.xml ? "  " : "", eol);
-
         if (!prms.full) {
-            rc_t rc2 = MainQuickCheck(&prms);
+            rc_t rc2 = MainQuickCheck ( prms . knsMgr );
             if (rc == 0 && rc2 != 0)
                 rc = rc2;
         }
@@ -3816,35 +3821,38 @@ rc_t CC KMain(int argc, char *argv[]) {
             }
         }
 
-        if ( params == 0 && MainHasTest ( & prms, eNetwork ) )
-            MainNetwotk ( & prms, "SRR000001", prms . xml ? "  " : "", eol );
+        if ( prms . full ) {
+            if ( params == 0 && MainHasTest ( & prms, eNetwork ) )
+                MainNetwotk ( & prms, "SRR000001",
+                              prms . xml ? "  " : "", eol );
 
-        MainRepositories ( & prms, "  " );
+            MainRepositories ( & prms, "  " );
 
-        for (i = 0; i < params; ++i) {
-            const char *name = NULL;
-            rc3 = ArgsParamValue(args, i, (const void **)&name);
-            if (rc3 == 0) {
-                rc_t rc2 = Quitting();
-                if (rc2 != 0) {
+            for (i = 0; i < params; ++i) {
+                const char *name = NULL;
+                rc3 = ArgsParamValue(args, i, (const void **)&name);
+                if (rc3 == 0) {
+                    rc_t rc2 = Quitting();
+                    if (rc2 != 0) {
+                        if (rc == 0 && rc2 != 0)
+                            rc = rc2;
+                        break;
+                    }
+                    ReportResetObject(name);
+                    rc2 = MainExec(&prms, NULL, name);
                     if (rc == 0 && rc2 != 0)
                         rc = rc2;
-                    break;
                 }
-                ReportResetObject(name);
-                rc2 = MainExec(&prms, NULL, name);
-                if (rc == 0 && rc2 != 0)
-                    rc = rc2;
             }
-        }
-        if (rc == 0 && rc3 != 0)
-            rc = rc3;
+            if (rc == 0 && rc3 != 0)
+                rc = rc3;
 
-        if (MainHasTest(&prms, eNcbiReport))
-            ReportForceFinalize();
+            if (MainHasTest(&prms, eNcbiReport))
+                ReportForceFinalize();
+        }
 
         if (!prms.full) {
-            OUTMSG(("\nAdd -F option to try all the tests."));
+//          OUTMSG(("\nAdd -F option to try all the tests."));
         }
 
         if (prms.xml) {
