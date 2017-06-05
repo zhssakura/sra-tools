@@ -161,6 +161,20 @@ static rc_t STestCheckUrl ( STest * self, const KNSManager * mgr,
     size_t num_read = 0;
     assert ( path );
     bool have_size = path [ 0 ] != '\0';
+    bool not_exist = false;
+    String gap;
+    CONST_STRING ( & gap, "gap-download.ncbi.nlm.nih.gov" );
+    if ( StringEqual ( host, & gap ) )
+        not_exist = true;
+    if ( have_size ) {
+        const char cgi [] = "names.cgi";
+        size_t csz = sizeof cgi - 1;
+        uint32_t m =  string_measure ( path, NULL );
+        if ( m > csz && string_cmp ( path + m - csz, csz, cgi, csz, csz ) == 0 )
+        {
+            have_size = false;
+        }
+    }
     rc_t rc = string_printf ( full, sizeof full, NULL,
                               "https://%S%s", host, path );
     if ( rc != 0 )
@@ -172,27 +186,45 @@ static rc_t STestCheckUrl ( STest * self, const KNSManager * mgr,
         const KFile * file = NULL;
         rc = STestStart ( self, false,
                           "KFile = KNSManagerMakeReliableHttpFile(%s):", full );
-        if ( rc == 0 )
+        if ( rc == 0 ) {
             rc = KNSManagerMakeReliableHttpFile ( mgr, & file, NULL,
                                                   http_vers, full);
-        if ( rc == 0 ) {
-            rc = KFileSize ( file, & sz );
-            if ( rc == 0 )
-                STestEnd ( self, eEND, "Size(KFile)=%lu: OK", sz );
-            else
-                STestEnd ( self, eEND, "FAILURE: %R", rc );
-        }
-        else if ( have_size )
-            STestEnd ( self, eEND, "FAILURE: %R", rc );
-        else if ( rc == SILENT_RC ( rcNS,
+            if ( rc != 0 ) {
+                if ( ( not_exist || ! have_size ) &&
+                 (rc == SILENT_RC ( rcNS, rcFile, rcOpening, rcFile, rcNotFound)
+                  ||
+                  rc == SILENT_RC ( rcNS, rcFile, rcOpening, rcSize, rcUnknown))
+                )
+                {
+                    rc = 0;
+                    STestEnd ( self, eEND, "Skipped (does not exist)" );
+                }
+                else
+                    STestEnd ( self, eEND, "FAILURE: %R", rc );
+            }
+            else {
+                if ( rc == 0 ) {
+                    STestEnd ( self, eEND, "OK" );
+                    rc = STestStart ( self, false,
+                          "KFileSize(KFile(%s)) =", full );
+                    rc = KFileSize ( file, & sz );
+                    if ( rc == 0 )
+                        STestEnd ( self, eEND, "%lu: OK", sz );
+                    else
+                        STestEnd ( self, eEND, "FAILURE: %R", rc );
+                }
+                else if ( have_size )
+                    STestEnd ( self, eEND, "FAILURE: %R", rc );
+                else if ( rc == SILENT_RC ( rcNS,
                                     rcFile, rcOpening, rcSize, rcUnknown ) )
-        {
-            rc = 0;
-            STestEnd ( self, eEND, "Skipped (Size Unknown)" );
+                {
+                    rc = 0;
+                    STestEnd ( self, eEND, "Skipped (Size Unknown)" );
+                }
+                else
+                    STestEnd ( self, eEND, "FAILURE: Size Unknown but %R", rc );
+            }
         }
-        else
-            STestEnd ( self, eEND, "FAILURE: Size Unknown but %R", rc );
-
         KFileRelease ( file );
         file = NULL;
     }
@@ -258,10 +290,11 @@ static rc_t STestCheckUrl ( STest * self, const KNSManager * mgr,
                 }
                 else if ( have_size )
                     STestEnd ( self, eEND, "FAILURE: %R", rc );
-                else if ( skipped && sz == 0 && rc == SILENT_RC
+                else if ( sz == 0 && rc == SILENT_RC
                              ( rcNS, rcTree, rcSearching, rcName, rcNotFound ) )
                 {
                     rc = 0;
+                    skipped = true;
                     STestEnd ( self, eEND, "Skipped (Not Required for %S)",
                                            host );
                 }
@@ -298,7 +331,7 @@ static rc_t STestCheckUrl ( STest * self, const KNSManager * mgr,
             size_t byte = 0;
             rc = KClientHttpResultRange ( rslt, & po, & byte );
             if ( rc == 0 ) {
-                if ( po != pos || byte != ebytes ) {
+                if ( po != pos || ( ebytes > 0 && byte != ebytes ) ) {
                     STestStart ( self, false,
                                  "KClientHttpResultRange(KHttpResult,&p,&b):" );
                     STestEnd ( self, eEND, "FAILURE: expected:{%lu,%zu}, "
@@ -386,6 +419,8 @@ static rc_t STestCheckUrl ( STest * self, const KNSManager * mgr,
                 OUTMSG ( ( "%u: ", code ) );
                 if ( code == 200 )
                     STestEnd ( self, eEND, "OK" );
+                else if ( code == 404 && not_exist )
+                    STestEnd ( self, eEND, "Skipped (does not exist)" );
                 else {
                     STestEnd ( self, eEND, "FAILURE" );
                     rc = RC ( rcExe, rcFile, rcReading, rcFile, rcInvalid );
@@ -406,7 +441,15 @@ static rc_t STestCheckUrl ( STest * self, const KNSManager * mgr,
                 rc = KStreamRead ( response, buffer, sizeof buffer,
                                    & num_read );
                 if ( rc != 0 )
-                    STestEnd ( self, eEND, "FAILURE: %R", rc );
+                    if ( not_exist && rc ==
+                        SILENT_RC ( rcNS, rcFile, rcReading, rcSelf, rcNull ) )
+                    {
+                        STestEnd ( self, eEND, "Skipped (does not exist)" );
+                        rc = 0;
+                        break;
+                    }
+                    else
+                        STestEnd ( self, eEND, "FAILURE: %R", rc );
                 else if ( num_read != 0 ) {
                     if ( total == 0 && esz > 0 ) {
                         int i = 0;
@@ -471,7 +514,7 @@ static rc_t STestCheckUrl ( STest * self, const KNSManager * mgr,
 /******************************************************************************/
 static rc_t STestCheckNetwork ( STest * self, const KNSManager * mgr,
     const String * domain, const char * path, const char * exp, size_t esz,
-    bool version, const char * fmt, ... )
+    const char * path2, const char * fmt, ... )
 {
     uint16_t port = 443;
     KEndPoint ep;
@@ -500,9 +543,8 @@ static rc_t STestCheckNetwork ( STest * self, const KNSManager * mgr,
     if ( rc == 0 ) {
         assert ( path );
         rc = STestCheckUrl ( self, mgr, domain, path, false, exp, esz );
-        if ( version ) {
-            const char path [] = "/sra/sdk/current/sratoolkit.current.version";
-            rc_t r2 = STestCheckUrl ( self, mgr, domain, path, true, 0, 0 );
+        if ( path2 != NULL ) {
+            rc_t r2 = STestCheckUrl ( self, mgr, domain, path2, true, 0, 0 );
             if ( rc == 0 )
                 rc = r2;
         }
@@ -519,27 +561,35 @@ rc_t MainQuickCheck ( const KNSManager * mgr ) {
     rc = STestStart ( & t, true, "Network" );
     {
         String d;
+        CONST_STRING ( & d, "gap-download.ncbi.nlm.nih.gov" );
+        rc_t r2 = STestCheckNetwork ( & t, mgr, & d, "", NULL, 0, 
+                                      NULL, "Access to %S", & d );
+        if ( r1 == 0 )
+            r1 = r2;
+    }
+    {
+        String d;
         CONST_STRING ( & d, "ftp-trace.ncbi.nlm.nih.gov" );
         rc_t r2 = STestCheckNetwork ( & t, mgr, & d,
             "/sra/refseq/KC702174.1", exp, sizeof exp - 1,
-            true, "Access to %S", & d );
+            "/sra/sdk/current/sratoolkit.current.version",
+            "Access to %S", & d );
         if ( r1 == 0 )
             r1 = r2;
     }
     {
         String d;
         CONST_STRING ( & d, "sra-download.ncbi.nlm.nih.gov" );
-        rc_t r2 = STestCheckNetwork ( & t, mgr, & d,
-            "/srapub/SRR042846", exp, sizeof exp - 1,
-            false, "Access to %S", & d );
+        rc_t r2 = STestCheckNetwork ( & t, mgr, & d, "/srapub/SRR042846",
+            exp, sizeof exp - 1, NULL, "Access to %S", & d );
         if ( r1 == 0 )
             r1 = r2;
     }
     {
         String d;
         CONST_STRING ( & d, "www.ncbi.nlm.nih.gov" );
-        rc_t r2 = STestCheckNetwork ( & t, mgr, & d,
-                                      "", 0, 0, false, "Access to %S", & d );
+        rc_t r2 = STestCheckNetwork ( & t, mgr, & d, "", 0, 0,
+            "/Traces/names/names.cgi", "Access to %S", & d );
         if ( r1 == 0 )
             r1 = r2;
     }
