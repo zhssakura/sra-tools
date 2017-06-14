@@ -23,7 +23,9 @@
 * ==============================================================================
 *
 */
-#include "test-sra-priv.h" /* endpoint_to_string */
+#include "test-sra.h" /* endpoint_to_string */
+#include <kfg/config.h> /* KConfigReadString */
+#include <kfs/directory.h> /* KDirectoryRelease */
 #include <kfs/file.h> /* KFile */
 #include <klib/out.h> /* KOutMsg */
 #include <klib/printf.h> /* string_vprintf */
@@ -34,20 +36,39 @@
 #include <kns/manager.h> /* KNSManager */
 #include <kns/kns-mgr-priv.h> /* KNSManagerMakeReliableHttpFile */
 #include <kns/stream.h> /* KStream */
+#include <vfs/manager.h> /* VFSManagerOpenDirectoryRead */
+#include <vfs/path.h> /* VFSManagerMakePath */
 #include <ctype.h> /* isprint */
 #include <limits.h> /* PATH_MAX */
 #ifndef PATH_MAX
 #define PATH_MAX 4096
 #endif
-
+#define RELEASE(type, obj) do { rc_t rc2 = type##Release(obj); \
+    if (rc2 != 0 && rc == 0) { rc = rc2; } obj = NULL; } while (false)
 typedef struct {
-    int n [ 5 ];
+    const KConfig * kfg;
+    const KNSManager * kmgr;
+    const struct VFSManager * vmgr;
+    int n [ 6 ];
     int ended;
+    int total;
 } STest;
-static void STestInit ( STest * self ) {
+static void STestInit ( STest * self, const KConfig * kfg,
+    const KNSManager * kmgr, const struct VFSManager * vmgr )
+{
     assert ( self );
     memset ( self, 0, sizeof * self );
     self -> ended = -1;
+    self -> kfg = kfg;
+    self -> kmgr = kmgr;
+    self -> vmgr = vmgr;
+}
+static void STestFini ( STest * self ) {
+    assert ( self );
+    if ( self -> n [ 0 ] == 0 || self -> n [ 1 ] != 0 || self -> ended != 0 )
+        OUTMSG ( ( "= TEST WAS NOT COMPLETED\n" ) );
+    OUTMSG ( ( "= %d (%d) tests were performed\n",
+               self -> n [ 0 ], self -> total ) );
 }
 static rc_t STestVStart ( STest * self, bool checking,
                           const char * fmt, va_list args  )
@@ -55,17 +76,20 @@ static rc_t STestVStart ( STest * self, bool checking,
     char b [ 512 ] = "";
     rc_t rc = string_vprintf ( b, sizeof b, NULL, fmt, args );
     if ( rc != 0 )
-        OUTMSG ( ( "CANNOT PRINT: %R", rc ) );
+        OUTMSG ( ( "CANNOT PRINT: %R\n", rc ) );
     else {
         assert ( self );
         int i = 0;
         if ( self -> ended == -1 ) {
+            bool found = false;
             self -> ended = sizeof self -> n / sizeof self -> n [ 0 ] - 1;
             for ( i = 0; i < sizeof self -> n / sizeof self -> n [ 0 ]; ++ i )
                 if ( self -> n [ i ] == 0 ) {
                     self -> ended = i;
+                    found = true;
                     break;
                 }
+            assert ( found );
         }
         assert ( self -> ended >= 0 );
         ++ self -> n [ self -> ended ];
@@ -98,6 +122,7 @@ static rc_t STestVEnd ( STest * self, EOK ok,
         if ( self -> ended != -1 )
             -- self -> ended;
         else {
+            ++ self -> total;
             self -> ended = sizeof self -> n / sizeof self -> n [ 0 ] - 1;
             for ( i = 0; i < sizeof self -> n / sizeof self -> n [ 0 ]; ++ i )
                 if ( self -> n [ i ] == 0 ) {
@@ -149,386 +174,632 @@ static rc_t STestStart ( STest * self, bool checking,
     va_end ( args );
     return rc;
 }
-static rc_t STestCheckUrl ( STest * self, const KNSManager * mgr,
-    const String * host, const char * path, bool print,
-    const char * exp, size_t esz )
+typedef struct {
+    VPath * vpath;
+    const String * acc;
+} Data;
+static rc_t DataInit ( Data * self, const struct VFSManager * mgr,
+                       const char * path )
 {
+    assert ( self );
+    memset ( self, 0, sizeof * self );
+    rc_t rc = VFSManagerMakePath ( mgr, & self -> vpath, path );
+    if ( rc != 0 )
+        OUTMSG ( ( "VFSManagerMakePath(%s) = %R\n", path, rc ) );
+    else {
+        VPath * vacc = NULL;
+        rc = VFSManagerExtractAccessionOrOID ( mgr, & vacc, self -> vpath );
+        if ( rc != 0 )
+            rc = 0;
+        else {
+            String acc;
+            rc = VPathGetPath ( vacc, & acc );
+            if ( rc == 0 )
+                StringCopy ( & self -> acc, & acc );
+            else
+                OUTMSG ( ( "Cannot VPathGetPath"
+                           "(VFSManagerExtractAccessionOrOID(%R))\n", rc ) );
+        }
+    }
+    return rc;
+}
+static rc_t DataFini ( Data * self ) {
+    assert ( self );
+    free ( ( void * ) self -> acc );
+    rc_t rc = VPathRelease ( self -> vpath );
+    memset ( self, 0, sizeof * self );
+    return rc;
+}
+static const ver_t HTTP_VERSION = 0x01010000;
+static rc_t STestCheckFileSize ( STest * self, const String * path,
+                                 uint64_t * sz )
+{
+    rc_t rc = 0;
+    const KFile * file = NULL;
+    assert ( self );
+    STestStart ( self, false,
+                 "KFile = KNSManagerMakeReliableHttpFile(%S):", path );
+    rc = KNSManagerMakeReliableHttpFile ( self -> kmgr, & file, NULL,
+                                          HTTP_VERSION, "%S", path );
+    if ( rc != 0 )
+        STestEnd ( self, eEND, "FAILURE: %R", rc );
+    else {
+        if ( rc == 0 ) {
+            STestEnd ( self, eEND, "OK" );
+            rc = STestStart ( self, false, "KFileSize(KFile(%S)) =", path );
+            rc = KFileSize ( file, sz );
+            if ( rc == 0 )
+                STestEnd ( self, eEND, "%lu: OK", * sz );
+            else
+                STestEnd ( self, eEND, "FAILURE: %R", rc );
+        }
+        else
+            STestEnd ( self, eEND, "FAILURE: %R", rc );
+    }
+    KFileRelease ( file );
+    file = NULL;
+    return rc;
+}
+static
+rc_t STestCheckRanges ( STest * self, const Data * data, uint64_t sz )
+{
+    assert ( self && data );
+    rc_t rc = STestStart ( self, true, "Support of Range requests" );
+    KClientHttp * http = NULL;
+    assert ( self && data );
+    String host;
+    rc = VPathGetHost ( data -> vpath, & host );
+    if ( rc != 0 )
+        OUTMSG ( ( "Cannot VPathGetHost(%R)\n", rc ) );
+    String scheme;
+    if ( rc == 0 )
+        rc = VPathGetScheme ( data -> vpath, & scheme );
+    if ( rc != 0 )
+        OUTMSG ( ( "Cannot VPathGetScheme(%R)\n", rc ) );
+    bool https = false;
+    if ( rc == 0 ) {
+        String sHttps;
+        String sHttp;
+        CONST_STRING ( & sHttp, "http" );
+        CONST_STRING ( & sHttps, "https" );
+        if ( StringEqual ( & scheme, & sHttps ) )
+            https = true;
+        else if ( StringEqual ( & scheme, & sHttp ) )
+            https = false;
+        else {
+            OUTMSG ( ( "Unexpected scheme '(%S)'\n", & scheme ) );
+            return 0;
+        }
+    }
+    if ( rc == 0 ) {
+        if ( https ) {
+            STestStart ( self, false, "KClientHttp = "
+                         "KNSManagerMakeClientHttps(%S):", & host );
+            rc = KNSManagerMakeClientHttps ( self -> kmgr, & http, NULL,
+                                             HTTP_VERSION, & host, 0 );
+        }
+        else {
+            STestStart ( self, false, "KClientHttp = "
+                         "KNSManagerMakeClientHttp(%S):", & host );
+            rc = KNSManagerMakeClientHttp ( self -> kmgr, & http, NULL,
+                                            HTTP_VERSION, & host, 0 );
+        }
+        if ( rc == 0 )
+            STestEnd ( self, eEND, "OK" );
+        else
+            STestEnd ( self, eEND, "FAILURE: %R", rc );
+    }
+    KHttpRequest * req = NULL;
+    if ( rc == 0 ) {
+        String path;
+        rc = VPathGetPath ( data -> vpath, & path );
+        if ( rc != 0 )
+            OUTMSG ( ( "Cannot VPathGetPath(%R)\n", rc ) );
+        else {
+            rc = KHttpMakeRequest ( http, & req, "%S", & path );
+            if ( rc != 0 )
+                OUTMSG ( ( "KHttpMakeRequest(%S) = %R\n", & path, rc ) );
+        }
+    }
+    KHttpResult * rslt = NULL;
+    if ( rc == 0 ) {
+        STestStart ( self, false, "KHttpResult = "
+            "KHttpRequestHEAD(KHttpMakeRequest(KClientHttp)):" );
+        rc = KHttpRequestHEAD ( req, & rslt );
+        if ( rc == 0 )
+            STestEnd ( self, eEND, "OK" );
+        else
+            STestEnd ( self, eEND, "FAILURE: %R", rc );
+    }
     char buffer [ 1024 ] = "";
-    char full [ PATH_MAX ] = "";
-    ver_t http_vers = 0x01010000;
+    size_t num_read = 0;
+    if ( rc == 0 ) {
+        STestStart ( self, false,
+                     "KHttpResultGetHeader(KHttpResult, Accept-Ranges) =" );
+        rc = KHttpResultGetHeader ( rslt, "Accept-Ranges",
+                                    buffer, sizeof buffer, & num_read );
+        if ( rc == 0 ) {
+            const char bytes [] = "bytes";
+            if ( string_cmp ( buffer, num_read, bytes, sizeof bytes - 1,
+                              sizeof bytes - 1 ) == 0 )
+            {
+                STestEnd ( self, eEND, "'%.*s': OK",
+                                        ( int ) num_read, buffer );
+            }
+            else {
+                STestEnd ( self, eEND, "'%.*s': FAILURE",
+                                        ( int ) num_read, buffer );
+                rc = RC ( rcExe, rcFile, rcOpening, rcFunction, rcUnsupported );
+            }
+        }
+        else
+            STestEnd ( self, eEND, "FAILURE: %R", rc );
+    }
+    KHttpResultRelease ( rslt );
+    rslt = NULL;
+    uint64_t pos = 0;
+    size_t bytes = 4096;
+    size_t ebytes = bytes;
+    if ( sz < ebytes )
+        ebytes = sz;
+    if ( sz > bytes * 2 )
+        pos = sz / 2;
+    if ( rc == 0 ) {
+        STestStart ( self, false, "KHttpResult = KHttpRequestByteRange"
+                        "(KHttpMakeRequest, %lu, %zu):", pos, bytes );
+        rc = KHttpRequestByteRange ( req, pos, bytes );
+        if ( rc == 0 )
+            STestEnd ( self, eEND, "OK" );
+        else
+            STestEnd ( self, eEND, "FAILURE: %R", rc );
+    }
+    if ( rc == 0 ) {
+        STestStart ( self, false,
+            "KHttpResult = KHttpRequestGET(KHttpMakeRequest(KClientHttp)):" );
+        rc = KHttpRequestGET ( req, & rslt );
+        if ( rc == 0 )
+            STestEnd ( self, eEND, "OK" );
+        else
+            STestEnd ( self, eEND, "FAILURE: %R", rc );
+    }
+    if ( rc == 0 ) {
+        uint64_t po = 0;
+        size_t byte = 0;
+        rc = KClientHttpResultRange ( rslt, & po, & byte );
+        if ( rc == 0 ) {
+            if ( po != pos || ( ebytes > 0 && byte != ebytes ) ) {
+                STestStart ( self, false,
+                             "KClientHttpResultRange(KHttpResult,&p,&b):" );
+                STestEnd ( self, eEND, "FAILURE: expected:{%lu,%zu}, "
+                            "got:{%lu,%zu}", pos, ebytes, po, byte );
+                rc = RC ( rcExe, rcFile, rcReading, rcRange, rcOutofrange );
+            }
+        }
+        else {
+            STestStart ( self, false, "KClientHttpResultRange(KHttpResult):" );
+            STestEnd ( self, eEND, "FAILURE: %R", rc );
+        }
+    }
+    if ( rc == 0 ) {
+        STestStart ( self, false,
+                     "KHttpResultGetHeader(KHttpResult, Content-Range) =" );
+        rc = KHttpResultGetHeader ( rslt, "Content-Range",
+                                    buffer, sizeof buffer, & num_read );
+        if ( rc == 0 )
+            STestEnd ( self, eEND, "'%.*s': OK",
+                                    ( int ) num_read, buffer );
+        else
+            STestEnd ( self, eEND, "FAILURE: %R", rc );
+    }
+    KHttpResultRelease ( rslt );
+    rslt = NULL;
+    KHttpRequestRelease ( req );
+    req = NULL;
+    KHttpRelease ( http );
+    http = NULL;
+    STestEnd ( self, rc == 0 ? eOK : eFAIL, "Support of Range requests" );
+    return rc;
+}
+static rc_t STestCheckStreamRead ( STest * self, const KStream * stream,
+    uint64_t sz, bool print, const char * exp, size_t esz )
+{
+    rc_t rc = 0;
+    size_t total = 0;
+    STestStart ( self, false, "KStreamRead(KHttpResult):" );
+    char buffer [ 1024 ] = "";
+    while ( rc == 0 ) {
+        size_t num_read = 0;
+        rc = KStreamRead ( stream, buffer, sizeof buffer, & num_read );
+        if ( rc != 0 )
+            STestEnd ( self, eEND, "FAILURE: %R", rc );
+        else if ( num_read != 0 ) {
+            if ( total == 0 && esz > 0 ) {
+                int i = 0;
+                int s = esz;
+                if ( num_read < esz )
+                    s = num_read;
+                STestEnd ( self, eMGS, "'" );
+                for ( i = 0; i < s; ++ i ) {
+                    if ( isprint ( buffer [ i ] ) )
+                        STestEnd ( self, eMGS, "%c", buffer [ i ] );
+                    else if ( buffer [ i ] == 0 )
+                        STestEnd ( self, eMGS, "\\0" );
+                    else
+                        STestEnd ( self, eMGS, "\\%03o",
+                                               ( unsigned char ) buffer [ i ] );
+                }
+                STestEnd ( self, eMGS, "': " );
+                if ( string_cmp ( buffer, num_read, exp, esz, esz ) != 0 ) {
+                    STestEnd ( self, eEND, " FAILURE: bad content" );
+                    rc = RC ( rcExe, rcFile, rcReading, rcString, rcUnequal );
+                }
+            }
+            total += num_read;
+        }
+        else {
+            assert ( num_read == 0 );
+            if ( total == sz ) {
+                if ( print ) {
+                    if ( total >= sizeof buffer )
+                        buffer [ sizeof buffer - 1 ] = '\0';
+                    else {
+                        buffer [ total ] = '\0';
+                        while ( total > 0 ) {
+                            -- total;
+                            if ( buffer [ total ] == '\n' )
+                                buffer [ total ] = '\0';
+                            else
+                                break;
+                        }
+                    }
+                    STestEnd ( self, eMGS, "%s: ", buffer );
+                }
+                STestEnd ( self, eEND, "OK" );
+            }
+            else
+                STestEnd ( self, eEND, "%s: SIZE DO NOT MATCH (%zu)\n", total );
+            break;
+        }
+    }
+    return rc;
+}
+static rc_t STestCheckHttpUrl ( STest * self, const Data * data, bool print,
+                                const char * exp, size_t esz )
+{
     KHttpRequest * req = NULL;
     KHttpResult * rslt = NULL;
-    size_t num_read = 0;
-    assert ( path );
-    bool have_size = path [ 0 ] != '\0';
-    bool not_exist = false;
-    String gap;
-    CONST_STRING ( & gap, "gap-download.ncbi.nlm.nih.gov" );
-    if ( StringEqual ( host, & gap ) )
-        not_exist = true;
-    if ( have_size ) {
-        const char cgi [] = "names.cgi";
-        size_t csz = sizeof cgi - 1;
-        uint32_t m =  string_measure ( path, NULL );
-        if ( m > csz && string_cmp ( path + m - csz, csz, cgi, csz, csz ) == 0 )
-        {
-            have_size = false;
-        }
-    }
-    rc_t rc = string_printf ( full, sizeof full, NULL,
-                              "https://%S%s", host, path );
+    assert ( self && data );
+    const String * full = NULL;
+    rc_t rc = VPathMakeString ( data -> vpath, & full );
     if ( rc != 0 )
-        OUTMSG ( ( "CANNOT PRINT PATH: %R\n", rc ) );
+        OUTMSG ( ( "CANNOT VPathMakeString: %R\n", rc ) );
     if ( rc == 0 )
-        rc = STestStart ( self, true, "Access to %s", full );
+        rc = STestStart ( self, true, "Access to '%S'", full );
     uint64_t sz = 0;
+    if ( rc == 0 )
+        rc = STestCheckFileSize ( self, full, & sz );
+    if ( rc == 0 )
+        rc = STestCheckRanges ( self, data, sz );
     if ( rc == 0 ) {
-        const KFile * file = NULL;
-        rc = STestStart ( self, false,
-                          "KFile = KNSManagerMakeReliableHttpFile(%s):", full );
-        if ( rc == 0 ) {
-            rc = KNSManagerMakeReliableHttpFile ( mgr, & file, NULL,
-                                                  http_vers, full);
-            if ( rc != 0 ) {
-                if ( ( not_exist || ! have_size ) &&
-                 (rc == SILENT_RC ( rcNS, rcFile, rcOpening, rcFile, rcNotFound)
-                  ||
-                  rc == SILENT_RC ( rcNS, rcFile, rcOpening, rcSize, rcUnknown))
-                )
-                {
-                    rc = 0;
-                    STestEnd ( self, eEND, "Skipped (does not exist)" );
-                }
-                else
-                    STestEnd ( self, eEND, "FAILURE: %R", rc );
-            }
-            else {
-                if ( rc == 0 ) {
-                    STestEnd ( self, eEND, "OK" );
-                    rc = STestStart ( self, false,
-                          "KFileSize(KFile(%s)) =", full );
-                    rc = KFileSize ( file, & sz );
-                    if ( rc == 0 )
-                        STestEnd ( self, eEND, "%lu: OK", sz );
-                    else
-                        STestEnd ( self, eEND, "FAILURE: %R", rc );
-                }
-                else if ( have_size )
-                    STestEnd ( self, eEND, "FAILURE: %R", rc );
-                else if ( rc == SILENT_RC ( rcNS,
-                                    rcFile, rcOpening, rcSize, rcUnknown ) )
-                {
-                    rc = 0;
-                    STestEnd ( self, eEND, "Skipped (Size Unknown)" );
-                }
-                else
-                    STestEnd ( self, eEND, "FAILURE: Size Unknown but %R", rc );
-            }
-        }
-        KFileRelease ( file );
-        file = NULL;
-    }
-    if ( rc == 0 ) {
-        bool skipped = false;
-        uint64_t pos = 0;
-        size_t bytes = 4096;
-        size_t ebytes = bytes;
-        if ( sz < ebytes )
-            ebytes = sz;
-        if ( sz > bytes * 2 )
-            pos = sz / 2;
-        KClientHttp * http = NULL;
-        rc = STestStart ( self, true, "Support of Range requests" );
-        if ( rc == 0 ) {
-            rc = STestStart ( self, false,
-                "KClientHttp = KNSManagerMakeClientHttps(%S):", host );
-            if ( rc == 0 ) {
-                rc = KNSManagerMakeClientHttps ( mgr, & http, NULL,
-                                                 http_vers, host, 0 );
-                if ( rc == 0 )
-                    STestEnd ( self, eEND, "OK" );
-                else
-                    STestEnd ( self, eEND, "FAILURE: %R", rc );
-            }
-        }
-        if ( rc == 0 ) {
-            if ( path [ 0 ] == '\0' )
-                path = "/";
-            rc = KHttpMakeRequest ( http, & req, path );
-        }
-        if ( rc == 0 ) {
-            rc = STestStart ( self, false, "KHttpResult = "
-                "KHttpRequestHEAD(KHttpMakeRequest(KClientHttp)):" );
-            if ( rc == 0 ) {
-                rc = KHttpRequestHEAD ( req, & rslt );
-                if ( rc == 0 )
-                    STestEnd ( self, eEND, "OK" );
-                else
-                    STestEnd ( self, eEND, "FAILURE: %R", rc );
-            }
-        }
-        if ( rc == 0 ) {
-            rc = STestStart ( self, false,
-                "KHttpResultGetHeader(KHttpResult, Accept-Ranges) =" );
-            if ( rc == 0 ) {
-                rc = KHttpResultGetHeader ( rslt, "Accept-Ranges",
-                                            buffer, sizeof buffer, & num_read );
-                if ( rc == 0 ) {
-                    const char bytes [] = "bytes";
-                    if ( string_cmp ( buffer, num_read, bytes, sizeof bytes - 1,
-                            sizeof bytes - 1 ) == 0 )
-                    {
-                        STestEnd ( self, eEND, "'%.*s': OK",
-                                   ( int ) num_read, buffer );
-                    }
-                    else {
-                        STestEnd ( self, eEND, "'%.*s': FAILURE",
-                                   ( int ) num_read, buffer );
-                        rc = RC ( rcExe, rcFile,
-                                  rcOpening, rcFunction, rcUnsupported );
-                    }
-                }
-                else if ( have_size )
-                    STestEnd ( self, eEND, "FAILURE: %R", rc );
-                else if ( sz == 0 && rc == SILENT_RC
-                             ( rcNS, rcTree, rcSearching, rcName, rcNotFound ) )
-                {
-                    rc = 0;
-                    skipped = true;
-                    STestEnd ( self, eEND, "Skipped (Not Required for %S)",
-                                           host );
-                }
-                else
-                    STestEnd ( self, eEND, "FAILURE: Not Required but %R", rc );
-            }
-        }
-        KHttpResultRelease ( rslt );
-        rslt = NULL;
-        if ( rc == 0 ) {
-            rc = STestStart ( self, false, "KHttpResult = KHttpRequestByteRange"
-                "(KHttpMakeRequest, %lu, %zu):", pos, bytes );
-            if ( rc == 0 ) {
-                rc = KHttpRequestByteRange ( req, pos, bytes );
-                if ( rc == 0 )
-                    STestEnd ( self, eEND, "OK" );
-                else
-                    STestEnd ( self, eEND, "FAILURE: %R", rc );
-            }
-        }
-        if ( rc == 0 ) {
-            rc = STestStart ( self, false, "KHttpResult = "
-                "KHttpRequestGET(KHttpMakeRequest(KClientHttp)):" );
-            if ( rc == 0 ) {
-                rc = KHttpRequestGET ( req, & rslt );
-                if ( rc == 0 )
-                    STestEnd ( self, eEND, "OK" );
-                else
-                    STestEnd ( self, eEND, "FAILURE: %R", rc );
-            }
-        }
-        if ( rc == 0 ) {
-            uint64_t po = 0;
-            size_t byte = 0;
-            rc = KClientHttpResultRange ( rslt, & po, & byte );
-            if ( rc == 0 ) {
-                if ( po != pos || ( ebytes > 0 && byte != ebytes ) ) {
-                    STestStart ( self, false,
-                                 "KClientHttpResultRange(KHttpResult,&p,&b):" );
-                    STestEnd ( self, eEND, "FAILURE: expected:{%lu,%zu}, "
-                        "got:{%lu,%zu}", pos, ebytes, po, byte );
-                    rc = RC ( rcExe, rcFile, rcReading, rcRange, rcOutofrange );
-                }
-            }
-            else if ( ! have_size && sz == 0 && rc == SILENT_RC
-                    ( rcNS, rcNoTarg, rcValidating, rcError, rcUnsupported ) )
-            {
-                rc = 0;
-                skipped = true;
-            }
-            else {
-                STestStart ( self, false,
-                             "KClientHttpResultRange(KHttpResult):" );
-                STestEnd ( self, eEND, "FAILURE: %R", rc );
-            }
-        }
-        if ( rc == 0 ) {
-            rc = STestStart ( self, false,
-                "KHttpResultGetHeader(KHttpResult, Content-Range) =" );
-            if ( rc == 0 ) {
-                rc = KHttpResultGetHeader ( rslt, "Content-Range",
-                                            buffer, sizeof buffer, & num_read );
-                if ( rc == 0 )
-                    STestEnd ( self, eEND, "'%.*s': OK",
-                               ( int ) num_read, buffer );
-                else if ( have_size )
-                    STestEnd ( self, eEND, "FAILURE: %R", rc );
-                else if ( skipped && sz == 0 && rc == SILENT_RC
-                             ( rcNS, rcTree, rcSearching, rcName, rcNotFound ) )
-                {
-                    rc = 0;
-                    STestEnd ( self, eEND, "Skipped (Not Required for %S)",
-                                           host );
-                }
-                else
-                    STestEnd ( self, eEND, "FAILURE: Not Required but %R", rc );
-            }
-        }
-        KHttpResultRelease ( rslt );
-        rslt = NULL;
-        KHttpRequestRelease ( req );
-        req = NULL;
-        KHttpRelease ( http );
-        http = NULL;
-        if ( rc == 0 && skipped )
-            STestEnd ( self, eDONE,
-                       "Support of Range requests: Skipped (Not Required)" );
+        STestStart ( self, false,
+                     "KHttpRequest = KNSManagerMakeRequest(%S):", full );
+        rc = KNSManagerMakeRequest ( self -> kmgr, & req,
+                                     HTTP_VERSION, NULL, "%S", full );
+        if ( rc == 0 )
+            STestEnd ( self, eEND, "OK"  );
         else
-            STestEnd ( self, rc == 0 ? eOK : eFAIL,
-                       "Support of Range requests" );
+            STestEnd ( self, eEND, "FAILURE: %R", rc );
     }
     if ( rc == 0 ) {
-        rc = STestStart ( self, false,
-                          "KHttpRequest = KNSManagerMakeRequest(%s):", full );
-        if ( rc == 0 ) {
-            rc = KNSManagerMakeRequest ( mgr, & req, http_vers, NULL, full );
-            if ( rc == 0 )
-                STestEnd ( self, eEND, "OK"  );
-            else
-                STestEnd ( self, eEND, "FAILURE: %R", rc );
-        }
-    }
-    if ( rc == 0 ) {
-        rc = STestStart ( self, false,
-            "KHttpResult = KHttpRequestGET(KHttpRequest):" );
-        if ( rc == 0 ) {
-            rc = KHttpRequestGET ( req, & rslt );
-            if ( rc == 0 )
-                STestEnd ( self, eEND, "OK" );
-            else
-                STestEnd ( self, eEND, "FAILURE: %R", rc );
-        }
+        STestStart ( self, false,
+                     "KHttpResult = KHttpRequestGET(KHttpRequest):" );
+        rc = KHttpRequestGET ( req, & rslt );
+        if ( rc == 0 )
+            STestEnd ( self, eEND, "OK" );
+        else
+            STestEnd ( self, eEND, "FAILURE: %R", rc );
     }
     if ( rc == 0 ) {
         uint32_t code = 0;
-        rc = STestStart ( self, false, "KHttpResultStatus(KHttpResult) =" );
-        if ( rc == 0 ) {
-            rc = KHttpResultStatus ( rslt, & code, NULL, 0, NULL );
-            if ( rc != 0 )
-                STestEnd ( self, eEND, "FAILURE: %R", rc );
+        STestStart ( self, false, "KHttpResultStatus(KHttpResult) =" );
+        rc = KHttpResultStatus ( rslt, & code, NULL, 0, NULL );
+        if ( rc != 0 )
+            STestEnd ( self, eEND, "FAILURE: %R", rc );
+        else {
+            STestEnd ( self, eMGS, "%u: ", code );
+            if ( code == 200 )
+                STestEnd ( self, eEND, "OK" );
             else {
-                OUTMSG ( ( "%u: ", code ) );
-                if ( code == 200 )
-                    STestEnd ( self, eEND, "OK" );
-                else if ( code == 404 && not_exist )
-                    STestEnd ( self, eEND, "Skipped (does not exist)" );
-                else {
-                    STestEnd ( self, eEND, "FAILURE" );
-                    rc = RC ( rcExe, rcFile, rcReading, rcFile, rcInvalid );
-                }
+                STestEnd ( self, eEND, "FAILURE" );
+                rc = RC ( rcExe, rcFile, rcReading, rcFile, rcInvalid );
             }
         }
     }
     if ( rc == 0 ) {
-        KStream * response = NULL;
-        rc = KHttpResultGetInputStream ( rslt, & response );
+        KStream * stream = NULL;
+        rc = KHttpResultGetInputStream ( rslt, & stream );
         if ( rc != 0 )
             OUTMSG ( (
                 "KHttpResultGetInputStream(KHttpResult) = %R\n", rc ) );
+        else
+            rc = STestCheckStreamRead ( self, stream, sz, print, exp, esz );
+        KStreamRelease ( stream );
+        stream = NULL;
+    }
+    STestEnd ( self, rc == 0 ? eOK : eFAIL, "Access to '%S'", full );
+    free ( ( void * ) full );
+    full = NULL;
+    return rc;
+}
+bool DataIsAccession ( const Data * self ) {
+    assert ( self );
+    if ( self -> acc == NULL )
+        return false;
+    else
+        return self -> acc -> size != 0;
+}
+static rc_t STestCheckVfsUrl ( STest * self, const Data * data ) {
+    assert ( self && data );
+    if ( ! DataIsAccession ( data ) )
+        return 0;
+    String path;
+    rc_t rc = VPathGetPath ( data -> vpath, & path );
+    if ( rc != 0 ) {
+        OUTMSG ( ( "Cannot VPathGetPath(%R)", rc ) );
+        return rc;
+    }
+    const KDirectory * d = NULL;
+    STestStart ( self, false, "VFSManagerOpenDirectoryRead(%S):", & path );
+    rc = VFSManagerOpenDirectoryRead ( self -> vmgr, & d, data -> vpath );
+    if ( rc == 0 )
+        STestEnd ( self, eEND, "OK"  );
+    else
+        STestEnd ( self, eEND, "FAILURE: %R", rc );
+    RELEASE ( KDirectory, d );
+    return rc;
+}
+static rc_t STestCheckUrlImpl ( STest * self, const Data * data, bool print,
+                                const char * exp, size_t esz )
+{
+    rc_t rc = STestCheckHttpUrl ( self, data, print, exp, esz );
+    rc_t r2 = STestCheckVfsUrl  ( self, data );
+    return rc != 0 ? rc : r2;
+}
+static rc_t STestCheckUrl ( STest * self, const Data * data, bool print,
+                            const char * exp, size_t esz )
+{
+    assert ( data );
+    String path;
+    rc_t rc = VPathGetPath ( data -> vpath, & path );
+    if ( rc != 0 ) {
+        OUTMSG ( ( "Cannot VPathGetPath(%R)", rc ) );
+        return rc;
+    }
+    if ( path . size == 0 ) /* does not exist */
+        return 0;
+    return STestCheckUrlImpl ( self, data, print, exp, esz );
+}
+static String * KConfig_Resolver ( const KConfig * self ) {
+    String * s = NULL;
+    rc_t rc = KConfigReadString ( self,
+                                  "tools/test-sra/diagnose/resolver-cgi", & s );
+    if ( rc != 0 ) {
+        String str;
+        CONST_STRING ( & str,
+                       "https://www.ncbi.nlm.nih.gov/Traces/names/names.cgi" );
+        rc = StringCopy ( ( const String ** ) & s, & str );
+        assert ( rc == 0 );
+    }
+    assert ( s );
+    return s;
+}
+static const char * STestCallCgi ( STest * self, const String * acc,
+    char * response, size_t response_sz, size_t * resp_read )
+{
+    const char * url = NULL;
+    assert ( self );
+    KHttpRequest * req = NULL;
+    STestStart ( self, true, "Access to '%S'", acc );
+    const String * cgi = KConfig_Resolver ( self -> kfg );
+    STestStart ( self, false,
+        "KHttpRequest = KNSManagerMakeReliableClientRequest(%S):", cgi );
+    rc_t rc = KNSManagerMakeReliableClientRequest ( self -> kmgr, & req,
+        HTTP_VERSION, NULL, "%S", cgi);
+    if ( rc == 0 )
+        STestEnd ( self, eEND, "OK"  );
+    else
+        STestEnd ( self, eEND, "FAILURE: %R", rc );
+    if ( rc == 0 ) {
+        const char param [] = "accept-proto";
+        rc = KHttpRequestAddPostParam ( req, "%s=https,http,fasp", param );
+        if ( rc != 0 )
+            OUTMSG ( ( "KHttpRequestAddPostParam() = %R\n", rc ) );
+    }
+    if ( rc == 0 ) {
+        const char param [] = "object";
+        rc = KHttpRequestAddPostParam ( req, "%s=0||%S", param, acc );
+        if ( rc != 0 )
+            OUTMSG ( ( "KHttpRequestAddPostParam() = %R\n", rc ) );
+    }
+    if ( rc == 0 ) {
+        const char param [] = "version";
+        rc = KHttpRequestAddPostParam ( req, "%s=3.0", param );
+        if ( rc != 0 )
+            OUTMSG ( ( "KHttpRequestAddPostParam() = %R\n", rc ) );
+    }
+    KHttpResult * rslt = NULL;
+    if ( rc == 0 ) {
+        STestStart ( self, false, "KHttpRequestPOST(KHttpRequest(%S)):", cgi );
+        rc = KHttpRequestPOST ( req, & rslt );
+        if ( rc == 0 )
+            STestEnd ( self, eEND, "OK"  );
+        else
+            STestEnd ( self, eEND, "FAILURE: %R", rc );
+    }
+    rc_t rs = 0;
+    if ( rc == 0 ) {
+        uint32_t code = 0;
+        STestStart ( self, false, "KHttpResultStatus(KHttpResult(%S)) =", cgi );
+        rc = KHttpResultStatus ( rslt, & code, NULL, 0, NULL );
+        if ( rc != 0 )
+            STestEnd ( self, eEND, "FAILURE: %R", rc );
         else {
-            size_t total = 0;
-            rc = STestStart ( self, false, "KStreamRead(KHttpResult):" );
-            while ( rc == 0 ) {
-                rc = KStreamRead ( response, buffer, sizeof buffer,
-                                   & num_read );
-                if ( rc != 0 )
-                    if ( not_exist && rc ==
-                        SILENT_RC ( rcNS, rcFile, rcReading, rcSelf, rcNull ) )
-                    {
-                        STestEnd ( self, eEND, "Skipped (does not exist)" );
-                        rc = 0;
+            STestEnd ( self, eMGS, "%u: ", code );
+            if ( code == 200 )
+                STestEnd ( self, eEND, "OK" );
+            else {
+                STestEnd ( self, eEND, "FAILURE" );
+                rs = RC ( rcExe, rcFile, rcReading, rcFile, rcInvalid );
+            }
+        }
+    }
+    KStream * stream = NULL;
+    if ( rc == 0 ) {
+        rc = KHttpResultGetInputStream ( rslt, & stream );
+        if ( rc != 0 )
+            OUTMSG ( ( "KHttpResultGetInputStream() = %R\n", rc ) );
+    }
+    if ( rc == 0 ) {
+        assert ( resp_read );
+        STestStart ( self, false, "KStreamRead(KHttpResult(%S)) =", cgi );
+        rc = KStreamRead ( stream, response, response_sz, resp_read );
+        if ( rc != 0 )
+            STestEnd ( self, eEND, "FAILURE: %R", rc );
+        else {
+            if ( * resp_read > response_sz - 4 ) {
+                response [ response_sz - 4 ] = '.';
+                response [ response_sz - 3 ] = '.';
+                response [ response_sz - 2 ] = '.';
+                response [ response_sz - 1 ] = '\0';
+            }
+            else {
+                response [ * resp_read + 1 ] = '\0';
+                for ( ; * resp_read > 0 && ( response [ * resp_read ] == '\n' ||
+                                             response [ * resp_read ] == '\0' );
+                      --  ( * resp_read ) )
+                {
+                    response [ * resp_read ] = '\0';
+                }
+            }
+            STestEnd ( self, eEND, "'%s'", response );
+            if ( rs == 0 ) {
+                int i = 0;
+                int p = 0;
+                for ( i = 0; p < * resp_read ; ++ i ) {
+                    char * n = string_chr ( response + p,
+                                            * resp_read - p, '|' );
+                    if ( n != NULL )
+                        p = n - response + 1;
+                    if ( i == 6 ) {
+                        url = n + 1;
                         break;
                     }
-                    else
-                        STestEnd ( self, eEND, "FAILURE: %R", rc );
-                else if ( num_read != 0 ) {
-                    if ( total == 0 && esz > 0 ) {
-                        int i = 0;
-                        int s = esz;
-                        if ( num_read < esz )
-                            s = num_read;
-                        STestEnd ( self, eMGS, "'" );
-                        for ( i = 0; i < s; ++ i ) {
-                            if ( isprint ( buffer [ i ] ) )
-                                STestEnd ( self, eMGS, "%c", buffer [ i ] );
-                            else if ( buffer [ i ] == 0 )
-                                STestEnd ( self, eMGS, "\\0" );
-                            else
-                                STestEnd ( self, eMGS, "\\%03o",
-                                           ( unsigned char ) buffer [ i ] );
-                        }
-                        STestEnd ( self, eMGS, "': " );
-                        if ( string_cmp ( buffer, num_read, exp, esz, esz )
-                                != 0 )
-                        {
-                            STestEnd ( self, eEND, " FAILURE: bad content" );
-                            rc = RC ( rcExe,
-                                      rcFile, rcReading, rcString, rcUnequal );
-                        }
-                    }
-                    total += num_read;
-                }
-                else {
-                    if ( ! have_size && sz == 0 )
-                        sz = total;
-                    if ( total == sz ) {
-                        if ( print ) {
-                            if ( total >= sizeof buffer )
-                                buffer [ sizeof buffer - 1 ] = '\0';
-                            else {
-                                buffer [ total ] = '\0';
-                                while ( total > 0 ) {
-                                    -- total;
-                                    if ( buffer [ total ] == '\n' )
-                                        buffer [ total ] = '\0';
-                                    else
-                                        break;
-                                }
-                            }
-                            STestEnd ( self, eMGS, "%s: ", buffer );
-                        }
-                        STestEnd ( self, eEND, "OK" );
-                    }
-                    else
-                        STestEnd ( self, eEND,
-                                   "%s: SIZE DO NOT MATCH (%zu)\n", total );
-                    break;
                 }
             }
         }
-        KStreamRelease ( response );
-        response = NULL;
     }
-    STestEnd ( self, rc == 0 ? eOK : eFAIL, "Access to %s", full );
+    if ( rc == 0 )
+        rc = rs;
+    KHttpResultRelease ( rslt );
+    rslt = NULL;
+    KHttpRequestRelease ( req );
+    req = NULL;
+    free ( ( void * ) cgi );
+    cgi = NULL;
+    return url;
+}
+static rc_t STestCheckAcc ( STest * self, const Data * data,
+                            bool print, const char * exp, size_t esz )
+{
+    rc_t rc = 0;
+    assert ( self && data );
+    char response [ 4096 ] = "";
+    size_t resp_len = 0;
+    const char * url = NULL;
+    String acc;
+    memset ( & acc, 0, sizeof acc );
+    if ( DataIsAccession ( data ) ) {
+        acc = * data -> acc;
+        url = STestCallCgi ( self, & acc,
+                             response, sizeof response, & resp_len );
+    }
+    bool checked = false;
+    if ( url != NULL ) {
+        char * p = string_chr ( url, resp_len - ( url - response ), '|' );
+        if ( p == NULL ) {
+            OUTMSG (( "UNEXPECTED RESOLVER RESPONSE\n" ));
+            rc = RC ( rcExe, rcString ,rcParsing, rcString, rcIncorrect );
+        }
+        else {
+            const String * full = NULL;
+            rc_t rc = VPathMakeString ( data -> vpath, & full );
+            if ( rc != 0 )
+                OUTMSG ( ( "CANNOT VPathMakeString: %R\n", rc ) );
+            char * d = string_chr ( url, resp_len - ( url - response ), '$' );
+            if ( d == NULL )
+                d = p;
+            while ( d != NULL && d <= p ) {
+                if ( ! checked && full != NULL && string_cmp ( full -> addr,
+                                    full -> size, url, d - url, d - url ) == 0 )
+                {
+                    checked = true;
+                }
+                * d = '\0';
+                if ( * url == 'h' ) {
+                    Data dt;
+                    if ( rc == 0 )
+                        rc = DataInit ( & dt, self -> vmgr, url );
+                    if ( rc == 0 ) {
+                        rc_t r1 = STestCheckUrl ( self, & dt, print, exp, esz );
+                        if ( rc == 0 )
+                            rc = r1;
+                    }
+                    DataFini ( & dt );
+                }
+                if ( d == p )
+                    break;
+                url = d + 1;
+                d = string_chr ( d, resp_len - ( d - response ), '$' );
+                if ( d > p )
+                    d = p;
+            }
+            free ( ( void * ) full );
+            full = NULL;
+        }
+    }
+    if ( ! checked ) {
+        rc_t r1 = STestCheckUrl ( self, data, print, exp, esz );
+        if ( rc == 0 )
+            rc = r1;
+    }
+    if ( acc . size != 0 )
+        STestEnd ( self, rc == 0 ? eOK : eFAIL, "Access to '%S'", & acc );
     return rc;
 }
 /******************************************************************************/
-static rc_t STestCheckNetwork ( STest * self, const KNSManager * mgr,
-    const String * domain, const char * path, const char * exp, size_t esz,
-    const char * path2, const char * fmt, ... )
+static rc_t STestCheckNetwork ( STest * self, const Data * data,
+    const char * exp, size_t esz, const Data * data2,
+    const char * fmt, ... )
 {
-    uint16_t port = 443;
     KEndPoint ep;
     va_list args;
     va_start ( args, fmt );
     char b [ 512 ] = "";
     rc_t rc = string_vprintf ( b, sizeof b, NULL, fmt, args );
+    if ( rc != 0 )
+        OUTMSG ( ( "CANNOT PREPARE MEGGAGE: %R\n", rc ) );
     va_end ( args );
-    rc = STestStart ( self, true, b );
-    if ( rc == 0 )
-        rc = STestStart ( self, false, "KNSManagerInitDNSEndpoint(%S:%hu) =",
-                          domain, port );
-    if ( rc == 0 ) {
-        rc = KNSManagerInitDNSEndpoint ( mgr, & ep, domain, port );
+    assert ( self && data );
+    STestStart ( self, true, b );
+    String host;
+    rc = VPathGetHost ( data -> vpath, & host );
+    if ( rc != 0 )
+        OUTMSG ( ( "Cannot VPathGetHost(%R)", rc ) );
+    else {
+        uint16_t port = 443;
+        STestStart ( self, false, "KNSManagerInitDNSEndpoint(%S:%hu) =",
+                                  & host, port );
+        rc = KNSManagerInitDNSEndpoint ( self -> kmgr, & ep, & host, port );
         if ( rc != 0 )
             STestEnd ( self, eEND, "FAILURE: %R", rc );
         else {
@@ -539,138 +810,109 @@ static rc_t STestCheckNetwork ( STest * self, const KNSManager * mgr,
             else
                 STestEnd ( self, eEND, "'%s': OK", endpoint );
         }
-    }
-    if ( rc == 0 ) {
-        assert ( path );
-        rc = STestCheckUrl ( self, mgr, domain, path, false, exp, esz );
-        if ( path2 != NULL ) {
-            rc_t r2 = STestCheckUrl ( self, mgr, domain, path2, true, 0, 0 );
-            if ( rc == 0 )
-                rc = r2;
+        port = 80;
+        STestStart ( self, false, "KNSManagerInitDNSEndpoint(%S:%hu) =",
+                                  & host, port );
+        rc_t r1 = KNSManagerInitDNSEndpoint ( self -> kmgr, & ep,
+                                              & host, port );
+        if ( r1 != 0 )
+            STestEnd ( self, eEND, "FAILURE: %R", r1 );
+        else {
+            char endpoint [ 1024 ] = "";
+            rc_t rx = endpoint_to_string ( endpoint, sizeof endpoint, & ep );
+            if ( rx != 0 )
+                STestEnd ( self, eEND, "CANNOT CONVERT TO STRING" );
+            else
+                STestEnd ( self, eEND, "'%s': OK", endpoint );
         }
+        if ( rc == 0 ) {
+            rc = STestCheckAcc ( self, data, false, exp, esz );
+            if ( data2 != NULL ) {
+                rc_t r2 = STestCheckAcc ( self, data2, true, 0, 0 );
+                if ( rc == 0 )
+                    rc = r2;
+            }
+        }
+        if ( rc == 0 )
+            rc = r1;
     }
     STestEnd ( self, rc == 0 ? eOK : eFAIL, b );
     return rc;
 }
-rc_t MainQuickCheck ( const KNSManager * mgr ) {
+rc_t MainQuickCheck ( const KConfig * kfg, const KNSManager * kmgr,
+                      const struct VFSManager * vmgr )
+{
     const char exp [] = "NCBI.sra\210\031\003\005\001\0\0\0";
     rc_t rc = 0;
     rc_t r1 = 0;
     STest t;
-    STestInit ( & t );
+    STestInit ( & t, kfg, kmgr, vmgr );
     rc = STestStart ( & t, true, "Network" );
     {
-        String d;
-        CONST_STRING ( & d, "gap-download.ncbi.nlm.nih.gov" );
-        rc_t r2 = STestCheckNetwork ( & t, mgr, & d, "", NULL, 0, 
-                                      NULL, "Access to %S", & d );
+#undef  HOST
+#define HOST "www.ncbi.nlm.nih.gov"
+        String h;
+        CONST_STRING ( & h, HOST );
+        Data d;
+        rc_t r2 = DataInit ( & d, vmgr, "https://" HOST );
+        if ( r2 == 0 )
+            r2 = STestCheckNetwork ( & t, & d, 0, 0,
+                                     NULL, "Access to '%S'", & h );
         if ( r1 == 0 )
             r1 = r2;
+        DataFini ( & d );
     }
     {
-        String d;
-        CONST_STRING ( & d, "ftp-trace.ncbi.nlm.nih.gov" );
-        rc_t r2 = STestCheckNetwork ( & t, mgr, & d,
-            "/sra/refseq/KC702174.1", exp, sizeof exp - 1,
-            "/sra/sdk/current/sratoolkit.current.version",
-            "Access to %S", & d );
+#undef  HOST
+#define HOST "sra-download.ncbi.nlm.nih.gov"
+        String h;
+        CONST_STRING ( & h, HOST );
+        Data d;
+        rc_t r2 = DataInit ( & d, vmgr, "https://" HOST "/srapub/SRR042846" );
+        if ( r2 == 0 )
+            r2 = STestCheckNetwork ( & t, & d, exp, sizeof exp - 1,
+                                     NULL, "Access to '%S'", & h );
         if ( r1 == 0 )
             r1 = r2;
+        DataFini ( & d );
     }
     {
-        String d;
-        CONST_STRING ( & d, "sra-download.ncbi.nlm.nih.gov" );
-        rc_t r2 = STestCheckNetwork ( & t, mgr, & d, "/srapub/SRR042846",
-            exp, sizeof exp - 1, NULL, "Access to %S", & d );
+#undef  HOST
+#define HOST "ftp-trace.ncbi.nlm.nih.gov"
+        String h;
+        CONST_STRING ( & h, HOST );
+        Data d;
+        Data v;
+        rc_t r2 = DataInit ( & d, vmgr,
+            "https://" HOST "/sra/refseq/KC702174.1" );
+        if ( r2 == 0 )
+            r2 = DataInit ( & v, vmgr,
+                "https://" HOST "/sra/sdk/current/sratoolkit.current.version" );
+        if ( r2 == 0 )
+            r2 = STestCheckNetwork ( & t, & d, exp, sizeof exp - 1,
+                                     & v, "Access to '%S'", & h );
         if ( r1 == 0 )
             r1 = r2;
+        DataFini ( & d );
     }
     {
-        String d;
-        CONST_STRING ( & d, "www.ncbi.nlm.nih.gov" );
-        rc_t r2 = STestCheckNetwork ( & t, mgr, & d, "", 0, 0,
-            "/Traces/names/names.cgi", "Access to %S", & d );
+#undef  HOST
+#define HOST "gap-download.ncbi.nlm.nih.gov"
+        String h;
+        CONST_STRING ( & h, HOST );
+        Data d;
+        rc_t r2 = DataInit ( & d, vmgr, "https://" HOST );
+        if ( r2 == 0 )
+            r2 = STestCheckNetwork ( & t, & d, NULL, 0, 
+                                     NULL, "Access to '%S'", & h );
         if ( r1 == 0 )
             r1 = r2;
+        DataFini ( & d );
     }
     STestEnd ( & t, r1 == 0 ? eOK : eFAIL, "Network" );
-  if(0){
-    OUTMSG ( ( "> 1.1 Checking Access to ftp-trace...\n" ) );
-    KHttpRequest * req = NULL;
-    OUTMSG ( ( "KHttpRequest = KNSManagerMakeRequest("
-"https://ftp-trace.ncbi.nlm.nih.gov/sra/sdk/current/sratoolkit.current.version"
-        ")... " ) );
-    rc_t r2 = KNSManagerMakeRequest ( mgr, & req, 0x01010000, NULL,
-"https://ftp-trace.ncbi.nlm.nih.gov/sra/sdk/current/sratoolkit.current.version"
-        );
-    if ( r2 == 0 )
-        OUTMSG ( ( "OK\n" ) );
-    else
-        OUTMSG ( ( "FAILURE: %R\n", r2 ) );
-    KHttpResult * rslt = NULL;
-    if ( r2 == 0 ) {
-        OUTMSG ( ( "KHttpResult = KHttpRequestGET(KHttpRequest)... " ) );
-        r2 = KHttpRequestGET ( req, & rslt );
-        if ( r2 == 0 )
-            OUTMSG ( ( "OK\n" ) );
-        else
-            OUTMSG ( ( "FAILURE: %R\n", r2 ) );
-    }
-    if ( r2 == 0 ) {
-        uint32_t code = 0;
-        OUTMSG ( ( "KHttpResultStatus(KHttpResult) = " ) );
-        r2 = KHttpResultStatus ( rslt, & code, NULL, 0, NULL );
-        if ( r2 != 0 )
-            OUTMSG ( ( "FAILURE: %R\n", r2 ) );
-        else {
-            OUTMSG ( ( "%u: ", code ) );
-            if ( code == 200 )
-                OUTMSG ( ( "OK\n" ) );
-            else {
-                OUTMSG ( ( "FAILURE\n" ) );
-                r2 = RC ( rcExe, rcFile, rcReading, rcFile, rcInvalid );
-            }
-         }
-    }
-    if ( r2 == 0 ) {
-        KStream * response = NULL;
-        r2 = KHttpResultGetInputStream ( rslt, & response );
-        char base [ 512 ] = "";
-        size_t num_read = 0;
-        OUTMSG ( ( "KStreamRead(KHttpResult) = " ) );
-        r2 = KStreamRead ( response, base, sizeof base, & num_read );
-        if ( r2 != 0 )
-            OUTMSG ( ( "FAILURE: %R\n", r2 ) );
-        else {
-            if ( num_read >= sizeof base )
-                base [ sizeof base - 1 ] = '\0';
-            else {
-                base [ num_read ] = '\0';
-                while ( num_read > 0 ) {
-                    -- num_read;
-                    if ( base [ num_read ] == '\n' )
-                        base [ num_read ] = '\0';
-                    else
-                        break;
-                }
-            }
-            OUTMSG ( ( "%s: OK\n", base ) );
-        }
-        KStreamRelease ( response );
-        response = NULL;
-    }
-    KHttpResultRelease ( rslt );
-    rslt = NULL;
-    KHttpRequestRelease ( req );
-    req = NULL;
-    if ( r2 == 0 )
-        OUTMSG ( ( "< 1.1 Access to ftp-trace: OK\n" ) );
-    else
-        OUTMSG ( ( "< 1.1 Access to ftp-trace: FAILURE\n" ) );
-    if ( r1 == 0 )
-        r1 = r2;
-  }/* 100000000
-SRR042846 !!!
+    if ( rc == 0 )
+        rc = r1;
+/*SRR042846 !!!
 0 13769 => SRR053325 Twice weekly longitudinal vaginal sampling
 1 13997 => SRR045450 2010 Human Microbiome Project filtered data is public 
 srapath SRR015685 200000000
@@ -679,119 +921,6 @@ srapath SRR010945
       0 31609 => SRR002749 2008 454 sequencing of Human immunodeficiency virus 1
 srapath SRR002682
       0 57513 => SRR000221 Nitrosopumilus maritimus SCM1 FGBT genomic fragment*/
-  if(0){
-    String domain;
-    uint16_t port = 443;
-    CONST_STRING ( & domain, "www.ncbi.nlm.nih.gov" );
-    OUTMSG ( ( "> 1.2 Checking Access to %S...\n", & domain ) );
-    KEndPoint ep;
-    OUTMSG ( ( "KNSManagerInitDNSEndpoint(%S:%hu) = ", & domain, port ) );
-    rc_t r2 = KNSManagerInitDNSEndpoint ( mgr, & ep,
-                                          & domain, port );
-    if ( r2 == 0 ) {
-        char endpoint [ 1024 ] = "";
-        rc_t rx = endpoint_to_string ( endpoint, sizeof endpoint, & ep );
-        if ( rx != 0 )
-            OUTMSG ( ( "CANNOT CONVERT TO STRING\n" ) );
-        else
-            OUTMSG ( ( "'%s': OK\n", endpoint ) );
-    }
-    else
-        OUTMSG ( ( "FAILURE: %R\n", r2 ) );
-    if ( r2 == 0 )
-        OUTMSG ( ( "< 1.2 Access to %S: OK\n", & domain ) );
-    else
-        OUTMSG ( ( "< 1.2 Access to %S: FAILURE\n", & domain ) );
-    if ( r1 == 0 )
-        r1 = r2;
-  }
-  if(0){
-    //const char domain [] = "sra-download.ncbi.nlm.nih.gov";
-    const char domain [] = "ftp-trace.ncbi.nlm.nih.gov";
-    //const char domain [] = "ftp32-1.st-va.ncbi.nlm.nih.gov";
-    //const char domain [] = "ftp12.be-md.ncbi.nlm.nih.gov";
-    const char dir [] = "/sra/refseq";
-    OUTMSG ( ( "> 1.3 Checking Access to %s...\n", domain ) );
-    ver_t http_vers = 0x01010000;
-    const char proto [] = "https://";
-    const char file [] = "/KC702174.1";
-    //const char path [] = "/srapub/SRR002749";
-    char path [ PATH_MAX ] = "";
-    KClientHttpRequest * kns_req = NULL;
-    rc_t r2 = string_printf ( path, sizeof path, NULL, "%s%s%s%s",
-                         proto, domain, dir, file );
-    uint64_t sz = 0;
-    if ( r2 != 0 )
-        OUTMSG ( ( "CANNOT PRINT PATH: %R\n", r2 ) );
-    else {
-        const KFile * file = NULL;
-        OUTMSG ( ( "KFile = KNSManagerMakeReliableHttpFile(%s)... ", path ) );
-        r2 = KNSManagerMakeReliableHttpFile ( mgr, & file, NULL,
-                                              http_vers, path);
-        if ( r2 == 0 )
-            r2 = KFileSize ( file, & sz );
-        if ( r2 == 0 )
-            OUTMSG ( ( " Size(KFile)=%lu: OK\n", sz ) );
-        else
-            OUTMSG ( ( "FAILURE: %R\n", r2 ) );
-        KFileRelease ( file );
-        file = NULL;
-    }
-    if ( r2 == 0 ) {
-        OUTMSG ( ( "KHttpRequest = KNSManagerMakeRequest(%s)... ", path ) );
-        r2 = KNSManagerMakeRequest ( mgr,
-            & kns_req, http_vers, NULL, "%s", path );
-        if ( r2 == 0 )
-            OUTMSG ( ( "OK\n" ) );
-        else
-            OUTMSG ( ( "FAILURE: %R\n", r2 ) );
-    }
-    KHttpResult * rslt = NULL;
-    if ( r2 == 0 ) {
-        OUTMSG ( ( "KHttpResult = KHttpRequestGET(KHttpRequest)... " ) );
-        r2 = KHttpRequestGET ( kns_req, & rslt );
-        if ( r2 == 0 )
-            OUTMSG ( ( "OK\n" ) );
-        else
-            OUTMSG ( ( "FAILURE: %R\n", r2 ) );
-    }
-    KStream * s = NULL;
-    if ( r2 == 0 )
-        r2 = KClientHttpResultGetInputStream ( rslt, & s );
-    size_t total = 0;
-    while ( r2 == 0 ) {
-        char buffer [ 1024 ];
-        size_t num_read = 0;
-        r2 = KStreamRead ( s, buffer, sizeof buffer, & num_read );
-        if ( r2 != 0 ) {
-            OUTMSG ( ( "KStreamRead(KClientHttpResult)... FAILURE: %R\n",
-                        r2 ) );
-        }
-        else if ( num_read != 0 )
-            total += num_read;
-        else {
-            if ( total == sz )
-                OUTMSG ( ( "KStreamRead(KClientHttpResult)... OK\n" ) );
-            else
-                OUTMSG ( (
-                    "KStreamRead(KClientHttpResult) = %zu: SIZE DO NOT MATCH\n",
-                    total ) );
-            break;
-        }
-    }
-    KStreamRelease ( s );
-    s = NULL;
-    KClientHttpResultRelease ( rslt );
-    rslt = NULL;
-    KClientHttpRequestRelease ( kns_req );
-    kns_req = NULL;
-    if ( r2 == 0 )
-        OUTMSG ( ( "< 1.3 Access to %s: OK\n", domain ) );
-    else
-        OUTMSG ( ( "< 1.3 Access to %s: FAILURE\n", domain ) );
-    if ( r1 == 0 )
-        r1 = r2;
-  }
     //if ( r1 == 0 )        OUTMSG ( ( "< 1 Network: OK\n" ) );    else        OUTMSG ( ( "< 1 Network: FAILURE\n" ) );
     /*OUTMSG ( ( ">>> Checking configuration:\n" ) );
 //  OUTMSG ( ( "  Site repository: " ) );    OUTMSG ( ( "\n" ) );
@@ -877,5 +1006,6 @@ srapath SRR002682
         rc = rc2;
     }
         */
+    STestFini ( & t );
     return rc;
 }

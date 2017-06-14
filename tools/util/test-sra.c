@@ -24,7 +24,7 @@
 *
 */
 
-#include "test-sra-priv.h" /* PrintOS */
+#include "test-sra.h" /* PrintOS */
 
 #include <kapp/main.h> /* KMain */
 
@@ -3797,7 +3797,8 @@ rc_t CC KMain(int argc, char *argv[]) {
         }
 
         if (!prms.full) {
-            rc_t rc2 = MainQuickCheck ( prms . knsMgr );
+            rc_t rc2 = MainQuickCheck ( prms . cfg, prms . knsMgr,
+                                                    prms . vMgr );
             if (rc == 0 && rc2 != 0)
                 rc = rc2;
         }

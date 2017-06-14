@@ -36,13 +36,16 @@ extern "C" {
 #endif
 
 
+struct KConfig;
 struct KEndPoint;
 struct KNSManager;
+struct VFSManager;
 
 
 rc_t endpoint_to_string ( char * buffer, size_t buflen, struct KEndPoint * ep );
 
-rc_t MainQuickCheck ( const struct KNSManager * mgr );
+rc_t MainQuickCheck ( const struct KConfig * kfg,
+    const struct KNSManager * kmgr, const struct VFSManager * vmgr );
 
 rc_t PrintOS(bool xml);
 

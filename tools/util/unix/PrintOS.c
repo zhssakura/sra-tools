@@ -24,7 +24,7 @@
 *
 */
 
-#include "test-sra-priv.h" /* PrintOS */
+#include "test-sra.h" /* PrintOS */
 
 #include <klib/debug.h> /* DBGMSG */
 #include <klib/out.h> /* OUTMSG */
