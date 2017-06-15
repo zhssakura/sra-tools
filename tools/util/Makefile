@@ -175,7 +175,6 @@ $(BINDIR)/testld: $(TESTLD_OBJ)
 #
 
 T_SRC = \
-	diagnose \
 	PrintOS \
 	test-sra \
 
@@ -186,6 +185,7 @@ T_LIB = \
 	-lkapp \
 	-stk-version \
 	-sncbi-vdb \
+	-sdiagnose \
 	-lm
 
 $(BINDIR)/test-sra: $(T_OBJ)

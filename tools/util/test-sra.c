@@ -24,6 +24,7 @@
 *
 */
 
+#include <diagnose/diagnose.h> /* KDiagnose */
 #include "test-sra.h" /* PrintOS */
 
 #include <kapp/main.h> /* KMain */
@@ -3797,10 +3798,20 @@ rc_t CC KMain(int argc, char *argv[]) {
         }
 
         if (!prms.full) {
-            rc_t rc2 = MainQuickCheck ( prms . cfg, prms . knsMgr,
-                                                    prms . vMgr );
-            if (rc == 0 && rc2 != 0)
-                rc = rc2;
+            KDiagnose * test = NULL;
+            rc_t r2 = KDiagnoseMakeExt ( & test, prms . cfg,
+                                          prms . knsMgr,   prms . vMgr );
+            if ( r2 != 0 ) {
+                if ( rc == 0 )
+                    rc = r2;
+            }
+            else {
+                r2 = KDiagnoseRun ( test );
+                if ( rc == 0 )
+                    rc = r2;
+            }
+            KDiagnoseRelease ( test );
+            test = NULL;
         }
 
         if (rc == 0) {
