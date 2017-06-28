@@ -482,7 +482,7 @@ extern "C"
 #include <kapp/main.h>
 #include <kapp/log-xml.h>
 
-const char UsageDefaultName[] = "test-general-loader";
+const char UsageDefaultName[] = "check-corrupt";
 
 #define ALIAS_SA_CUTOFF    NULL
 #define OPTION_SA_CUTOFF   "sa-cutoff"
