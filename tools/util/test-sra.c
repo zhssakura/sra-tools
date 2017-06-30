@@ -3806,7 +3806,7 @@ rc_t CC KMain(int argc, char *argv[]) {
                     rc = r2;
             }
             else {
-                r2 = KDiagnoseRun ( test );
+                r2 = KDiagnoseRun ( test, DIAGNOSE_ALL );
                 if ( rc == 0 )
                     rc = r2;
             }
