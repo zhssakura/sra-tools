@@ -1,4 +1,3 @@
-# ===========================================================================
 #
 #                            PUBLIC DOMAIN NOTICE
 #               National Center for Biotechnology Information
@@ -22,65 +21,86 @@
 #
 # ===========================================================================
 
-by_default: default
+default: std
 
-TOP ?= $(abspath ..)
-MODULE = tools
+TOP ?= $(abspath ../..)
 
-include $(TOP)/build/Makefile.shell
+MODULE = test/tui-example
 
-include $(TOP)/build/Makefile.config
+TEST_TOOLS =
+
+include $(TOP)/build/Makefile.env
+
+INT_TOOLS = \
+
+EXT_TOOLS = \
+    tui-example
+
+ALL_TOOLS = \
+	$(INT_TOOLS) \
+	$(EXT_TOOLS)
+	
+#-------------------------------------------------------------------------------
+# outer targets
+#
+all std: makedirs
+	@ $(MAKE_CMD) $(TARGDIR)/$@
+
+$(ALL_TOOLS): makedirs
+	@ $(MAKE_CMD) $(BINDIR)/$@
+
+.PHONY: all std $(ALL_TOOLS)
 
 #-------------------------------------------------------------------------------
-# default
+# clean
 #
-SUBDIRS =             \
-	util              \
-	align-cache       \
-	kar               \
-	kqsh              \
-	vdb-dump          \
-	sra-dump          \
-	sra-pileup        \
-	bam-loader        \
-	fastq-loader      \
-	srapath           \
-	sra-stat          \
-	vdb-copy          \
-	rd-filter-redact  \
-	vdb-config        \
-	align-info        \
-	qual-recalib-stat \
-	prefetch          \
-	vdb-decrypt       \
-	vdb-validate      \
-	sra-sort          \
-	cache-mgr         \
-	vcf-loader        \
-	copycat           \
-	sra-load          \
-	ccextract         \
-	pacbio-load       \
-	fuse              \
-	vdb-diff          \
-	kget              \
-	ngs-pileup        \
-	fastdump          \
-	cg-load           \
+clean: stdclean
 
-
-# common targets for non-leaf Makefiles; must follow a definition of SUBDIRS
-include $(TOP)/build/Makefile.targets
-
-$(SUBDIRS):
-	@ $(MAKE) -C $@
-
-.PHONY: default $(SUBDIRS)
+.PHONY: clean
 
 #-------------------------------------------------------------------------------
-# pass-through
+# all
 #
-out debug profile release GCC ICC VC++:
-	@ $(MAKE) TOP=$(TOP) -f $(TOP)/build/Makefile.env $@
+$(TARGDIR)/all: \
+	$(addprefix $(BINDIR)/,$(ALL_TOOLS))
 
-.PHONY: out debug profile release GCC ICC VC++
+.PHONY: $(TARGDIR)/all
+
+#-------------------------------------------------------------------------------
+# std
+#
+$(TARGDIR)/std: \
+	$(addprefix $(BINDIR)/,$(EXT_TOOLS))
+
+.PHONY: $(TEST_TOOLS)
+
+#-------------------------------------------------------------------------------
+# the tool
+#
+TOOL_SRC = \
+	example_0 \
+	example_1 \
+	example_2 \
+	example_3 \
+	tui_examples
+
+TOOL_OBJ = \
+	$(addsuffix .$(OBJX),$(TOOL_SRC))
+
+TOOL_LIB = \
+	-stui_cpp    \
+	-stui        \
+	-skapp       \
+	-stk-version \
+	-sncbi-vdb   \
+	-sm
+
+$(BINDIR)/tui-example: $(TOOL_OBJ)
+	$(LP) --exe --vers $(SRCDIR)/../../shared/toolkit.vers -o $@ $^ $(TOOL_LIB) \
+	-ltui_cpp \
+	-ltui \
+	-lncbi-vdb-static \
+	-lm \
+	-ldl \
+	-lpthread \
+	-lstdc++

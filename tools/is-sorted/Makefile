@@ -22,5 +22,58 @@
 #
 # ===========================================================================
 
-# SRA-TOOLS and library version
-VERSION = 2.9.0
+
+default: std
+
+TOP ?= $(abspath ../..)
+MODULE = tools/is-sorted
+
+INT_TOOLS = \
+
+EXT_TOOLS = \
+	is-sorted
+
+ALL_TOOLS = \
+	$(INT_TOOLS) \
+	$(EXT_TOOLS)
+
+include $(TOP)/build/Makefile.env
+
+#-------------------------------------------------------------------------------
+# outer targets
+#
+all std: makedirs
+	@ $(MAKE_CMD) $(TARGDIR)/$@-cmn
+
+$(ALL_TOOLS): makedirs
+	@ $(MAKE_CMD) $(BINDIR)/$@
+
+.PHONY: all std $(ALL_TOOLS)
+
+#-------------------------------------------------------------------------------
+# clean
+#
+clean: stdclean
+
+.PHONY: clean
+
+#-------------------------------------------------------------------------------
+# the tool: sam-events
+#
+
+TOOL_SRC = \
+	common \
+	alignment_iter \
+	is-sorted
+
+TOOL_OBJ = \
+	$(addsuffix .$(OBJX),$(TOOL_SRC))
+
+TOOL_LIB = \
+	-skapp \
+	-stk-version \
+	-sncbi-vdb \
+	-lm
+
+$(BINDIR)/is-sorted: $(TOOL_OBJ)
+	$(LP) --exe --vers $(SRCDIR)/../../shared/toolkit.vers -o $@ $^ $(TOOL_LIB)
