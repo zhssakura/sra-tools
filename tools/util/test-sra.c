@@ -3807,7 +3807,7 @@ rc_t CC KMain(int argc, char *argv[]) {
             }
             else {
                 KDiagnoseLogHandlerSetKOutMsg ( test );
-                r2 = KDiagnoseAll ( test, 0 );
+                r2 = KDiagnoseAdvanced ( test, KDIAGN_ALL );
                 if ( rc == 0 )
                     rc = r2;
             }
