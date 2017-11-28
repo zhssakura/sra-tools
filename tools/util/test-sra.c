@@ -82,6 +82,8 @@
 #include <stdlib.h> /* calloc */
 #include <string.h> /* memset */
 
+#include <stdio.h> /* sscanf */
+
 VFS_EXTERN rc_t CC VResolverProtocols ( VResolver * self,
     VRemoteProtocols protocols );
 
@@ -130,6 +132,7 @@ typedef struct {
     VSchema *schema;
 
     TTest tests;
+    uint64_t quickTests;
     bool recursive;
     bool noVDBManagerPathType;
     bool noRfs;
@@ -227,7 +230,9 @@ rc_t CC Usage(const Args *args) {
     return rc;
 }
 
-static bool testArg(const char *arg, TTest *testOn, TTest *testOff) {
+static
+bool testArg(const char *arg, TTest *testOn, TTest *testOff, uint64_t *tests)
+{
     int j = 1;
     TTest *res = NULL;
 
@@ -240,6 +245,14 @@ static bool testArg(const char *arg, TTest *testOn, TTest *testOff) {
         arg[1] != '\0' && strchr(TESTS, arg[1]) == NULL)
     {
         return false;
+    }
+
+    if ( isdigit ( arg[1] )) {
+        assert ( tests );
+        sscanf ( arg + 1, "%lui", tests ) ;
+        if ( * tests == 0 )
+            * tests = KDIAGN_ALL;
+        return true;
     }
 
     res = arg[0] == '-' ? testOff : testOn;
@@ -483,6 +496,7 @@ void _MainInit(Main *self, int argc, char *argv[], int *argi, char **argv2)
 
     TTest testsOn = 0;
     TTest testsOff = 0;
+    uint64_t tests = 0;
 
     assert(self && argv && argi && argv2);
 
@@ -490,7 +504,7 @@ void _MainInit(Main *self, int argc, char *argv[], int *argi, char **argv2)
     argv2[(*argi)++] = argv[0];
 
     for (i = 1; i < argc; ++i) {
-        if (!testArg(argv[i], &testsOn, &testsOff)) {
+        if (!testArg(argv[i], &testsOn, &testsOff, &tests)) {
             argv2[(*argi)++] = argv[i];
         }
         else {
@@ -501,11 +515,17 @@ void _MainInit(Main *self, int argc, char *argv[], int *argi, char **argv2)
     self->tests = processTests(testsOn, testsOff);
 
     if (hasTestArg) {
-        self->tests &= ~eNoTestArg;
+        if ( tests == 0 )
+            self->tests &= ~eNoTestArg;
+        else
+            self->quickTests = tests;
     }
     else {
         self->tests |= eNoTestArg;
     }
+
+    if ( self->quickTests == 0 )
+        self->quickTests = KDIAGN_ALL;
 
     MainPrint(self);
 }
@@ -3708,7 +3728,9 @@ static rc_t MainFromArgs ( Main * self, const Args * args ) {
 
     return rc;
 }
-
+static
+void CC c ( EKDiagTestState state, const KDiagnoseTest * test, void * data )
+{}
 rc_t CC KMain(int argc, char *argv[]) {
     rc_t rc = 0;
     uint32_t pcount = 0;
@@ -3806,8 +3828,11 @@ rc_t CC KMain(int argc, char *argv[]) {
                     rc = r2;
             }
             else {
+                const KDiagnoseTestDesc * desc = NULL;
+                rc_t rd = KDiagnoseGetDesc ( test, & desc );
+                KDiagnoseTestHandlerSet(test,c,0);
                 KDiagnoseLogHandlerSetKOutMsg ( test );
-                r2 = KDiagnoseAdvanced ( test, KDIAGN_ALL );
+                r2 = KDiagnoseAdvanced ( test, prms.quickTests );
                 if ( rc == 0 )
                     rc = r2;
             }
